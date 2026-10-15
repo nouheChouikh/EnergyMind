@@ -1,0 +1,15 @@
+stage,rule,homes_left
+metadata,all series in metadata.csv,25559
+metadata,household (CNAE 98xx),20794
+metadata,no self-consumption (no solar panels),20655
+metadata,"household tariff (2.x, up to 15 kW)",20477
+metadata,series dates cover 2018-2019,6950
+readings,series found in imp-pre.tzst,6923
+readings,"complete hourly 2018-2019 (gaps up to 48 h filled, flagged estimated)",6899
+readings,estimated hours at most 5%,6858
+readings,yearly use 600-12000 kWh in 2018 and in 2019,6193
+readings,2019 vs 2018 change at most 35%,5840
+readings,"no unexplained zeros (runs up to 0 h, at most 0% of hours)",2965
+readings,no flat stretches (at most 3 identical measured readings in a row),1336
+selection,"in Gipuzkoa, the province with most candidates",588
+selection,random draw with seed 2026,75
