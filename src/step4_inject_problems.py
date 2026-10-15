@@ -43,7 +43,8 @@ def recipes_markdown(answers):
         "",
         "## Rules for every problem",
         "",
-        "- Problems are injected only in 2019: practice (January to June) and final test (July to December). 2018 stays clean.",
+        "- Problems are injected only in 2019, in alternating months: practice (January, March, May, July, September, November) "
+        "and final test (February, April, June, August, October, December). 2018 stays clean.",
         "- Each problem fits inside one calendar month of its period.",
         "- No problem touches an hour that GoiEner marked as estimated.",
         f"- No two problems touch the same home, and at least {C.BUFFER_H} free hours separate them.",

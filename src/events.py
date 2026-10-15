@@ -1,7 +1,8 @@
 """Plan the problems to inject: which type, where, when and how big. The answer file comes from here.
 
 Placement rules (checked again in step 5):
-  - only in 2019: practice (Jan-Jun) and final test (Jul-Dec); 2018 stays clean
+  - only in 2019, alternating months: practice (Jan, Mar, May, Jul, Sep, Nov) and
+    final test (Feb, Apr, Jun, Aug, Oct, Dec); 2018 stays clean
   - each problem fits inside one calendar month of its period
   - never on hours GoiEner marked as estimated
   - no two problems on the same home, with 24 free hours before and after
@@ -18,9 +19,12 @@ SPLITS = ("practice", "final_test")
 
 
 def month_windows(idx, split):
-    first, last = (pd.Timestamp(x) for x in C.PERIODS[split])
+    p = C.PERIODS[split]
+    first, last = pd.Timestamp(p["first"]), pd.Timestamp(p["last"])
     out = []
     for month in pd.period_range(first, last, freq="M"):
+        if month.month not in p["months"]:
+            continue
         pos = np.where((idx >= max(month.start_time, first)) & (idx <= min(month.end_time, last)))[0]
         out.append((month.month, int(pos[0]), int(pos[-1])))
     return out

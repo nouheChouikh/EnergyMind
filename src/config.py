@@ -26,10 +26,14 @@ SEED = 2026                               # one seed; each purpose draws from it
 # exists exactly once.
 START = "2018-01-01 00:00:00"
 END = "2019-12-31 23:00:00"
+# 2019 alternates month by month, so practice and final test both contain winter and summer.
 PERIODS = {
-    "learning": ("2018-01-01 00:00:00", "2018-12-31 23:00:00"),    # normal behaviour only
-    "practice": ("2019-01-01 00:00:00", "2019-06-30 23:00:00"),    # problems injected, answers open
-    "final_test": ("2019-07-01 00:00:00", "2019-12-31 23:00:00"),  # problems + held-out type
+    "learning": dict(first="2018-01-01 00:00:00", last="2018-12-31 23:00:00",
+                     months=tuple(range(1, 13))),          # normal behaviour only
+    "practice": dict(first="2019-01-01 00:00:00", last="2019-12-31 23:00:00",
+                     months=(1, 3, 5, 7, 9, 11)),          # problems injected, answers open
+    "final_test": dict(first="2019-01-01 00:00:00", last="2019-12-31 23:00:00",
+                       months=(2, 4, 6, 8, 10, 12)),       # problems + held-out type
 }
 
 # ----------------------------------------------------------------------------- cleaning rules (step 1)

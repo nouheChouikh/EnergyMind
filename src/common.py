@@ -32,8 +32,9 @@ def rng(stream):
 
 def period_labels(idx):
     labels = np.full(len(idx), "", dtype=object)
-    for name, (first, last) in C.PERIODS.items():
-        labels[(idx >= pd.Timestamp(first)) & (idx <= pd.Timestamp(last))] = name
+    for name, p in C.PERIODS.items():
+        inside = (idx >= pd.Timestamp(p["first"])) & (idx <= pd.Timestamp(p["last"]))
+        labels[inside & np.isin(idx.month, p["months"])] = name
     return labels
 
 

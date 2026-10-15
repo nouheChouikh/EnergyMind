@@ -214,9 +214,11 @@ def data_card(normal, final, rep):
         if p.exists():
             rows.append(f"| `{name}` | {p.stat().st_size / 1e6:.1f} MB | {what} |")
     period_rows = []
-    for name, (a, b) in C.PERIODS.items():
+    month_names = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    for name, p in C.PERIODS.items():
         n = int((answers["period"] == name).sum()) if name != "learning" else 0
-        period_rows.append(f"| {name} | {a[:10]} to {b[:10]} | {n} |")
+        months = "all months" if len(p["months"]) == 12 else ", ".join(month_names[m - 1] for m in p["months"])
+        period_rows.append(f"| {name} | {p['first'][:4]}: {months} | {n} |")
     lines = [
         "# Data card - EnergyMind street dataset (Phase 1)",
         "",
@@ -269,7 +271,7 @@ def data_card(normal, final, rep):
         "",
         "## Periods",
         "",
-        "| Period | Dates | Problems injected |",
+        "| Period | Months | Problems injected |",
         "|---|---|---|",
         *period_rows,
         "",

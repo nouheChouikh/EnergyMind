@@ -9,8 +9,8 @@ Problems injected by type (practice / final test): outage_street 3/3, missing_al
        normal/readings_normal.parquet       895798843ec0bf01
        normal/transformer_normal.parquet    4cce06742e112b02
        readings_2018.parquet                f3dddc1bab319f13
-       readings_2019.parquet                a17a1df5d1ce9372
-       transformer.parquet                  132901cf465c8094
+       readings_2019.parquet                b3237986c9cc84d4
+       transformer.parquet                  4212c28b288ff063
 
 [PASS] 2018 (learning) is identical to the normal simulation: no problem injected
 

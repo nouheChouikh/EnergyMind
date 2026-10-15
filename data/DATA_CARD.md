@@ -50,11 +50,11 @@ Result: 75 homes from **Gipuzkoa**, 14 postcodes (56 homes have no postcode: Goi
 
 ## Periods
 
-| Period | Dates | Problems injected |
+| Period | Months | Problems injected |
 |---|---|---|
-| learning | 2018-01-01 to 2018-12-31 | 0 |
-| practice | 2019-01-01 to 2019-06-30 | 57 |
-| final_test | 2019-07-01 to 2019-12-31 | 68 |
+| learning | 2018: all months | 0 |
+| practice | 2019: Jan, Mar, May, Jul, Sep, Nov | 57 |
+| final_test | 2019: Feb, Apr, Jun, Aug, Oct, Dec | 68 |
 
 ## Injected problems
 
