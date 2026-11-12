@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 import config as C
-from common import PHASE_INDEX, STREAM_NOISE, STREAM_STREET, rng
+from shared.helpers import PHASE_INDEX, STREAM_NOISE, STREAM_STREET, rng
 
 
 def make_wiring(homes):

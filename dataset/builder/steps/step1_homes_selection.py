@@ -1,10 +1,10 @@
 """Step 1 - clean the GoiEner data and choose the homes of our street.
 
-Input : raw/imp-pre.tzst   12,149 CSV files (timestamp, kWh, imputed), hourly, before March 2020
-        raw/metadata.csv   one row per GoiEner series (activity code, tariff, province, ...)
-Output: data/source_subset.parquet   original hourly readings of the chosen homes, 2018-2019
-        data/homes.csv               one row per chosen home
-        data/selection_log.csv       how many homes are left after each cleaning rule
+Input : dataset/data/sources/goiener_download/imp-pre.tzst    12,149 CSV files (timestamp, kWh, imputed), hourly, before March 2020
+        dataset/data/sources/goiener_download/metadata.csv    one row per GoiEner series (activity code, tariff, province, ...)
+Output: dataset/data/sources/selected_homes_readings.parquet  original hourly readings of the chosen homes, 2018-2019
+        dataset/data/sources/selected_homes.csv               one row per chosen home
+        dataset/data/sources/homes_selection_log.csv          how many homes are left after each cleaning rule
 
 Cleaning rules (thresholds in config.py), in this order:
   metadata  household (CNAE 98xx), no self-consumption (no solar), household tariff 2.x,
@@ -26,8 +26,8 @@ import numpy as np
 import pandas as pd
 
 import config as C
-from common import (STREAM_SELECT, canonical_province, hours, longest_run, norm_text,
-                    province_label, rng, save_parquet, write_csv)
+from shared.helpers import (STREAM_SELECT, canonical_province, hours, longest_run, norm_text,
+                            province_label, rng, save_parquet, write_csv)
 
 IDX = hours()
 T0, T1 = IDX[0], IDX[-1]
@@ -133,7 +133,7 @@ def evaluate(raw):
 
 
 def archive_members():
-    """Yield (user id, tar, member) for every CSV in raw/imp-pre.tzst, streaming (no extraction to disk)."""
+    """Yield (user id, tar, member) for every CSV in the GoiEner archive, streaming (no extraction to disk)."""
     import zstandard
     with open(C.ARCHIVE, "rb") as fh:
         reader = zstandard.ZstdDecompressor(max_window_size=2**31).stream_reader(fh, read_size=1 << 20)
@@ -155,7 +155,8 @@ def keep_best(heap, item, n):
 def main():
     for path in (C.ARCHIVE, C.METADATA):
         if not path.exists():
-            sys.exit(f"Missing {path}\nDownload {path.name} from https://zenodo.org/records/7362094 into the raw/ folder.")
+            sys.exit(f"Missing {path}\nDownload {path.name} from https://zenodo.org/records/7362094 "
+                     "into the dataset/data/sources/goiener_download/ folder.")
     log = []
     raw_md = read_metadata()
     md = metadata_filter(raw_md, log)
@@ -203,7 +204,8 @@ def main():
             keep_best(best_target, item, C.N_HOMES)
     print(f"  done: {n_files} files read, {n_found} candidates checked, {len(clean)} clean homes")
     if n_files == 0:
-        sys.exit("The archive contains no CSV file. Is raw/imp-pre.tzst complete (791,622,311 bytes)?")
+        sys.exit("The archive contains no CSV file. Is dataset/data/sources/goiener_download/imp-pre.tzst "
+                 "complete (791,622,311 bytes)?")
     if n_found == 0:
         sys.exit("No candidate home was found in the archive. Do metadata.csv and imp-pre.tzst come from the same record?")
 
@@ -237,10 +239,10 @@ def main():
             kwh_2018=res["kwh_2018"], kwh_2019=res["kwh_2019"], estimated_share=res["estimated_share"]))
         parts.append(pd.DataFrame({"home_id": hid, "timestamp": IDX, "kwh": res["kwh"], "estimated": res["est"]}))
 
-    save_parquet(pd.concat(parts, ignore_index=True), C.DATA_DIR / "source_subset.parquet")
+    save_parquet(pd.concat(parts, ignore_index=True), C.SELECTED_HOMES_READINGS)
     homes = pd.DataFrame(homes)
-    write_csv(homes, C.DATA_DIR / "homes.csv")
-    write_csv(pd.DataFrame(log, columns=["stage", "rule", "homes_left"]), C.DATA_DIR / "selection_log.csv")
+    write_csv(homes, C.SELECTED_HOMES)
+    write_csv(pd.DataFrame(log, columns=["stage", "rule", "homes_left"]), C.HOMES_SELECTION_LOG)
 
     zips = homes["zip_code"].replace("", np.nan)
     print(f"  {len(homes)} homes from {homes['province'].mode().iat[0]}, "
