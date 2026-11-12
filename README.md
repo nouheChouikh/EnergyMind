@@ -1,8 +1,14 @@
-# EnergyMind - Phase 1: dataset and exploration
+# EnergyMind
 
-EnergyMind is a trust layer for a smart-metered neighbourhood. It checks every meter against its neighbours and against a reference meter at the transformer, tells real grid events apart from data problems, and explains each alert in plain language.
+EnergyMind is a trust layer for a smart-metered neighbourhood. Every hour it checks each meter reading, tells a genuine grid event from a house problem, and gives its verdict with a confidence and a plain explanation. It compares every meter with its neighbours and with a reference meter at the transformer.
 
-This repository holds the Phase 1 deliverables: the dataset, the code that builds it, and a first exploration.
+## Status
+
+| Stage | What | Status |
+|---|---|---|
+| 1. Dataset | a simulated street built from real smart-meter data, with documented injected problems | done (tags `v1.0-phase1`, `v1.1-phase1`) |
+| 2. Detection | rules, one losses regression, an Isolation Forest, explanations and diagnosis | next: designed in [`plan.md`](plan.md) |
+| 3. Operator app | an Angular app where operators follow incidents and give their decisions | later |
 
 ## The dataset
 - Real hourly consumption of Spanish households (GoiEner smart meter data), cleaned and assembled into one simulated low-voltage street.
@@ -12,14 +18,17 @@ This repository holds the Phase 1 deliverables: the dataset, the code that build
 
 Numbers, formulas and limits are generated with the data: see `data/DATA_CARD.md`, `data/RECIPES.md` and `data/checks_report.txt`.
 
+**Grading files:** `data/answers.csv` (the answer key) and `data/normal/` (the same street without problems) are only for grading. The detection system never reads them.
+
 ## Repository
+- `plan.md` - the detection design (stage 2): build from this file
 - `data/` - the dataset, the answer key and the generated documentation
-- `src/` - the code (`config.py` holds every assumption, `run_all.py` runs everything)
+- `src/` - the code that builds the dataset (`config.py` holds every assumption, `run_all.py` runs everything)
 - `notebooks/01_exploration.ipynb` - exploration with charts
 - `figures/` - charts saved by the notebook
 
 ## Reproduce
-Python 3.10 to 3.13:
+Tested with Python 3.12:
 
     pip install -r requirements.txt
     python src/run_all.py

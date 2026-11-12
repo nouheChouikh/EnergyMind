@@ -248,7 +248,7 @@ def data_card(normal, final, rep):
         "",
         f"Result: {len(homes)} homes from **{homes['province'].mode().iat[0]}**, {zips.nunique()} postcodes "
         f"({int(zips.isna().sum())} homes have no postcode: GoiEner removes postcodes of towns under 50,000 people). "
-        "Short gaps (at most 48 hours) were filled by linear interpolation and flagged as estimated.",
+        "Homes with more than 48 missing hours were removed. Up to 48 missing hours would be filled by linear interpolation and flagged as estimated, but none of the 75 chosen homes has a missing hour; their only estimated hours are the clock-change hours flagged by GoiEner.",
         "",
         "## The street",
         "",

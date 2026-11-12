@@ -1,6 +1,9 @@
 # GoiEner download (791 MB) - never committed; see README "Reproduce"
 raw/
 
+# Personal notes, kept out of the project
+my personal notes.md
+
 # Python and notebook clutter
 __pycache__/
 *.pyc

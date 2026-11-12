@@ -29,7 +29,7 @@ Everything here is rebuilt by `python src/run_all.py` (fixed seed 2026); every i
 | selection | in Gipuzkoa, the province with most candidates | 588 |
 | selection | random draw with seed 2026 | 75 |
 
-Result: 75 homes from **Gipuzkoa**, 14 postcodes (56 homes have no postcode: GoiEner removes postcodes of towns under 50,000 people). Short gaps (at most 48 hours) were filled by linear interpolation and flagged as estimated.
+Result: 75 homes from **Gipuzkoa**, 14 postcodes (56 homes have no postcode: GoiEner removes postcodes of towns under 50,000 people). Homes with more than 48 missing hours were removed. Up to 48 missing hours would be filled by linear interpolation and flagged as estimated, but none of the 75 chosen homes has a missing hour; their only estimated hours are the clock-change hours flagged by GoiEner.
 
 ## The street
 
