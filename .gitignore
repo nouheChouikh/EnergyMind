@@ -11,6 +11,9 @@ __pycache__/
 .venv/
 venv/
 
+# Receipt left by `pip install -e detection`
+*.egg-info/
+
 # OS files
 .DS_Store
 Thumbs.db
