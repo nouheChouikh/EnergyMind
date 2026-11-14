@@ -17,7 +17,7 @@ Inside `data/`:
 
 ## Rebuild
 
-From the repository root (tested with Python 3.12):
+From the repository root (tested with Python 3.12.10 and the versions pinned in `builder/requirements.txt`):
 
     pip install -r dataset/builder/requirements.txt
     python dataset/builder/build_dataset.py                    # steps 2 to 6 (step 1 reuses the saved selection)

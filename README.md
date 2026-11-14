@@ -36,12 +36,14 @@ Numbers, formulas and limits are generated with the data: see the data card [`da
 **Grading files:** `dataset/data/grading/` holds the answer key and the same street without problems. These files are only for grading; the detection system never reads them.
 
 ## Reproduce the dataset
-Tested with Python 3.12. From the repository root:
+Tested with Python 3.12.10 and the exact library versions pinned in `dataset/builder/requirements.txt`. From the repository root:
 
     pip install -r dataset/builder/requirements.txt
     python dataset/builder/build_dataset.py
 
 This rebuilds the dataset and runs the checks and the notebook; the same seed gives the same dataset. To redo the cleaning from the original archive, put `imp-pre.tzst` and `metadata.csv` from Zenodo record 7362094 in `dataset/data/sources/goiener_download/` and run `python dataset/builder/build_dataset.py --from-raw`. Details in [`dataset/README.md`](dataset/README.md).
+
+Every pull request into `main` rebuilds the dataset on GitHub and checks that it matches the committed files ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Licences and credit
 - Code: MIT (`LICENSE`).
