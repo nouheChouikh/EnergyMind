@@ -1,7 +1,7 @@
 """Step 5 - the dataset checks (proposal section 4.5) and the data card.
 
-Output: data/checks_report.txt   PASS / FAIL / INFO for every check, with the numbers
-        data/DATA_CARD.md        what the dataset is, how it was made, its limits
+Output: dataset/data/dataset_checks_report.txt  PASS / FAIL / INFO for every check, with the numbers
+        dataset/data/README.md                  the data card: what the dataset is, how it was made, its limits
 """
 import platform
 import sys
@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 
 import config as C
-from common import PHASE_INDEX, content_hash, csv_text, equal_runs, longest_run, period_labels, write_text
-from step3_simulate_normal import build_normal
-from step4_inject_problems import build_final
+from shared.helpers import PHASE_INDEX, content_hash, csv_text, equal_runs, longest_run, period_labels, write_text
+from steps.step3_street_simulation import build_normal
+from steps.step4_problems_injection import build_final
 
 
 class Report:
@@ -39,20 +39,21 @@ def run_checks(normal, final):
     learn = labels == "learning"
 
     # 1. reproducibility
-    files = {"normal/readings_normal.parquet": normal["readings"],
-             "normal/transformer_normal.parquet": normal["transformer"],
-             "readings_2018.parquet": final["readings_2018"],
-             "readings_2019.parquet": final["readings_2019"],
-             "transformer.parquet": final["transformer"]}
+    files = {C.NORMAL_METER_READINGS: normal["readings"],
+             C.NORMAL_TRANSFORMER_READINGS: normal["transformer"],
+             C.METER_READINGS_2018: final["readings_2018"],
+             C.METER_READINGS_2019: final["readings_2019"],
+             C.TRANSFORMER_READINGS: final["transformer"]}
     bad, hashes = [], []
-    for rel, df in files.items():
-        h_file = content_hash(pd.read_parquet(C.DATA_DIR / rel))
-        hashes.append(f"{rel:<36} {h_file}")
+    for path, df in files.items():
+        rel = path.relative_to(C.DATA_DIR).as_posix()
+        h_file = content_hash(pd.read_parquet(path))
+        hashes.append(f"{rel:<45} {h_file}")
         if h_file != content_hash(df):
             bad.append(rel)
-    for rel, df in {"wiring.csv": wiring, "answers.csv": final["answers"]}.items():
-        if (C.DATA_DIR / rel).read_bytes().decode("utf-8").replace("\r\n", "\n") != csv_text(df):
-            bad.append(rel)
+    for path, df in {C.STREET_WIRING: wiring, C.ANSWER_KEY: final["answers"]}.items():
+        if path.read_bytes().decode("utf-8").replace("\r\n", "\n") != csv_text(df):
+            bad.append(path.relative_to(C.DATA_DIR).as_posix())
     rep.check("Rebuilding from the same seed gives exactly the same dataset",
               not bad, f"seed {C.SEED}; content hashes:\n" + "\n".join(hashes)
               + (f"\nDIFFERENT: {', '.join(bad)}" if bad else ""))
@@ -169,10 +170,12 @@ def run_checks(normal, final):
             f"{est.mean():.2%} of all home-hours; per home max {est.mean(axis=1).max():.2%}")
 
     # 10. file sizes
-    sizes = {p.relative_to(C.DATA_DIR).as_posix(): p.stat().st_size / 1e6 for p in C.DATA_DIR.rglob("*") if p.is_file()}
+    # the GoiEner download (sources/goiener_download/) is never committed, so it is not counted
+    sizes = {p.relative_to(C.DATA_DIR).as_posix(): p.stat().st_size / 1e6 for p in C.DATA_DIR.rglob("*")
+             if p.is_file() and C.GOIENER_DIR not in p.parents}
     big = {k: v for k, v in sizes.items() if v > 50}
     rep.check("Every data file is under 50 MB (GitHub limit 100 MB)", not big,
-              "\n".join(f"{k:<36} {v:6.1f} MB" for k, v in sorted(sizes.items())))
+              "\n".join(f"{k:<45} {v:6.1f} MB" for k, v in sorted(sizes.items())))
     return rep
 
 
@@ -183,9 +186,9 @@ def counts_table(answers):
 
 
 def data_card(normal, final, rep):
-    homes = pd.read_csv(C.DATA_DIR / "homes.csv", dtype=str, keep_default_na=False)
-    log = pd.read_csv(C.DATA_DIR / "selection_log.csv")
-    ctx = pd.read_csv(C.DATA_DIR / "context.csv")
+    homes = pd.read_csv(C.SELECTED_HOMES, dtype=str, keep_default_na=False)
+    log = pd.read_csv(C.HOMES_SELECTION_LOG)
+    ctx = pd.read_csv(C.HOURLY_CONTEXT)
     wiring, answers = normal["wiring"], final["answers"]
     zips = homes["zip_code"].replace("", np.nan)
     temp_ok = ctx["temperature_c"].notna().any()
@@ -193,26 +196,25 @@ def data_card(normal, final, rep):
     t = counts_table(answers)
     n_hol = int(ctx.loc[ctx["is_holiday"] == 1, "timestamp"].str.slice(0, 10).nunique())
     files = [
-        ("readings_2018.parquet", "learning year: one row per home and hour - kWh, voltage_v, current_a, estimated"),
-        ("readings_2019.parquet", "practice + final test, same columns, with the injected problems"),
-        ("transformer.parquet", "reference meter: energy and voltage per phase each hour, plus the street total"),
-        ("wiring.csv", "cable, phase, position and distance of each home"),
-        ("context.csv", "temperature, weekend, holiday and period of each hour"),
-        ("answers.csv", "every injected problem: type, homes, start, end, size, expected verdict, recipe"),
-        ("RECIPES.md", "what each problem type changes, sizes and counts"),
-        ("normal/readings_normal.parquet", "the same street with no problem at all (simulated normal values)"),
-        ("normal/transformer_normal.parquet", "the transformer with no problem at all"),
-        ("source_subset.parquet", "original GoiEner readings of the 75 homes, 2018-2019 (rebuild without the 791 MB download)"),
-        ("homes.csv", "the chosen homes: GoiEner id, province, postcode, contracted power, yearly use"),
-        ("selection_log.csv", "how many homes each cleaning rule removed"),
-        ("weather_openmeteo.csv", "raw hourly temperature download (UTC)"),
-        ("checks_report.txt", "results of the checks below"),
+        (C.METER_READINGS_2018, "learning year: one row per home and hour - kWh, voltage_v, current_a, estimated"),
+        (C.METER_READINGS_2019, "practice + final test, same columns, with the injected problems"),
+        (C.TRANSFORMER_READINGS, "reference meter: energy and voltage per phase each hour, plus the street total"),
+        (C.STREET_WIRING, "cable, phase, position and distance of each home"),
+        (C.HOURLY_CONTEXT, "temperature, weekend, holiday and period of each hour"),
+        (C.ANSWER_KEY, "every injected problem: type, homes, start, end, size, expected verdict, recipe"),
+        (C.PROBLEM_RECIPES, "what each problem type changes, sizes and counts"),
+        (C.NORMAL_METER_READINGS, "the same street with no problem at all (simulated normal values)"),
+        (C.NORMAL_TRANSFORMER_READINGS, "the transformer with no problem at all"),
+        (C.SELECTED_HOMES_READINGS, "original GoiEner readings of the 75 homes, 2018-2019 (rebuild without the 791 MB download)"),
+        (C.SELECTED_HOMES, "the chosen homes: GoiEner id, province, postcode, contracted power, yearly use"),
+        (C.HOMES_SELECTION_LOG, "how many homes each cleaning rule removed"),
+        (C.WEATHER_CACHE, "raw hourly temperature download (UTC)"),
+        (C.CHECKS_REPORT, "results of the checks below"),
     ]
     rows = []
-    for name, what in files:
-        p = C.DATA_DIR / name
+    for p, what in files:
         if p.exists():
-            rows.append(f"| `{name}` | {p.stat().st_size / 1e6:.1f} MB | {what} |")
+            rows.append(f"| `{p.relative_to(C.DATA_DIR).as_posix()}` | {p.stat().st_size / 1e6:.1f} MB | {what} |")
     period_rows = []
     month_names = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
     for name, p in C.PERIODS.items():
@@ -222,13 +224,29 @@ def data_card(normal, final, rep):
     lines = [
         "# Data card - EnergyMind street dataset (Phase 1)",
         "",
+        "*Generated by `dataset/builder/steps/step5_dataset_checks.py`: edit that file, not this one.*",
+        "",
         f"A simulated low-voltage street built from the **real hourly consumption of {len(homes)} Spanish homes** "
         "(GoiEner smart meter data, 2018-2019). Each home has a meter that reports energy, voltage and current every hour; "
         "a reference meter at the transformer measures energy and voltage on each of the 3 phases. "
-        f"In 2019, {len(answers)} problems are injected following written recipes, and every one of them is listed in `answers.csv`.",
+        f"In 2019, {len(answers)} problems are injected following written recipes, and every one of them is listed in "
+        "`grading/answer_key.csv`.",
         "",
-        "Everything here is rebuilt by `python src/run_all.py` (fixed seed "
-        f"{C.SEED}); every invented number is in `src/config.py`.",
+        "Everything here is rebuilt by `python dataset/builder/build_dataset.py` (fixed seed "
+        f"{C.SEED}); every invented number is in `dataset/builder/config.py`.",
+        "",
+        "## Folders",
+        "",
+        "| Folder | What it holds | Who reads it |",
+        "|---|---|---|",
+        "| `system_inputs/` | what a utility would send: meter readings, transformer readings, street wiring, hourly context "
+        "| the detection system: these are its only inputs |",
+        "| `grading/` | the answer key, the problem recipes and the same street without any problem "
+        "| grading only: the detection system never reads these |",
+        "| `sources/` | what the dataset is built from: the selected homes' original readings and details, the selection log, "
+        "the temperature download | the dataset builder |",
+        "",
+        "`sources/goiener_download/` holds the 791 MB GoiEner download when step 1 is redone; it is never committed.",
         "",
         "## Source",
         "",
@@ -281,7 +299,7 @@ def data_card(normal, final, rep):
         "|---|---|---|",
         *[f"| `{k}` | {int(t.at[k, 'practice'])} | {int(t.at[k, 'final_test'])} |" for k in t.index],
         "",
-        "Recipes and rules: `RECIPES.md`. The answer key: `answers.csv`.",
+        "Recipes and rules: `grading/problem_recipes.md`. The answer key: `grading/answer_key.csv`.",
         "",
         "## Files",
         "",
@@ -289,7 +307,7 @@ def data_card(normal, final, rep):
         "|---|---|---|",
         *rows,
         "",
-        "## Checks (full numbers in `checks_report.txt`)",
+        "## Checks (full numbers in `dataset_checks_report.txt`)",
         "",
         *[f"- **{tag}** {name}" for tag, name in rep.results],
         "",
@@ -307,7 +325,7 @@ def data_card(normal, final, rep):
         "- Data derived from GoiEner smart meters data (University of Deusto and GoiEner), published here under CC BY-SA 4.0. "
         "Zenodo lists the source under CC BY 4.0 (its description also says CC-BY-SA); CC BY-SA 4.0 respects both.",
         "- Temperatures: Open-Meteo (open-meteo.com), CC BY 4.0, from Copernicus ERA5.",
-        "- Code: MIT licence (see `LICENSE`).",
+        "- Code: MIT licence (see `LICENSE` at the root of the repository).",
         "",
     ]
     return "\n".join(lines)
@@ -320,7 +338,7 @@ def main():
     t = counts_table(final["answers"])
     head = [
         "EnergyMind - Phase 1 dataset checks (proposal section 4.5)",
-        "Generated by src/step5_checks.py",
+        "Generated by dataset/builder/steps/step5_dataset_checks.py",
         f"Python {platform.python_version()}, numpy {np.__version__}, pandas {pd.__version__}, seed {C.SEED}",
         "",
         f"Problems injected by type (practice / final test): "
@@ -328,12 +346,12 @@ def main():
         "",
     ]
     text = "\n".join(head + rep.lines)
-    write_text(C.DATA_DIR / "checks_report.txt", text)
-    write_text(C.DATA_DIR / "DATA_CARD.md", data_card(normal, final, rep))
+    write_text(C.CHECKS_REPORT, text)
+    write_text(C.DATA_CARD, data_card(normal, final, rep))
     print("\n".join("    " + line for line in rep.lines if line.startswith("[")))
     failed = [name for tag, name in rep.results if tag == "FAIL"]
     if failed:
-        print(f"  {len(failed)} check(s) FAILED - see data/checks_report.txt")
+        print(f"  {len(failed)} check(s) FAILED - see dataset/data/dataset_checks_report.txt")
         sys.exit(1)
 
 

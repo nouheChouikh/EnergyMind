@@ -139,10 +139,10 @@ def to_long(home_ids, idx, kwh, volts, amps, est):
 
 
 def load_source():
-    """data/source_subset.parquet -> (home_ids, hours, kwh[home, hour], estimated[home, hour])."""
-    path = C.DATA_DIR / "source_subset.parquet"
+    """dataset/data/sources/selected_homes_readings.parquet -> (home_ids, hours, kwh[home, hour], estimated[home, hour])."""
+    path = C.SELECTED_HOMES_READINGS
     if not path.exists():
-        sys.exit(f"Missing {path}. Run step 1 first: python src/run_all.py --from-raw")
+        sys.exit(f"Missing {path}. Run step 1 first: python dataset/builder/build_dataset.py --from-raw")
     df = pd.read_parquet(path)
     df = df.sort_values(["home_id", "timestamp"], kind="mergesort").reset_index(drop=True)
     idx = hours()
@@ -150,7 +150,7 @@ def load_source():
     n_homes, n_hours = len(home_ids), len(idx)
     first = df["timestamp"].to_numpy(dtype="datetime64[ns]")[:n_hours]
     if len(df) != n_homes * n_hours or not np.array_equal(first, idx.to_numpy(dtype="datetime64[ns]")):
-        sys.exit("data/source_subset.parquet does not hold one row per home and hour for 2018-2019.")
+        sys.exit("dataset/data/sources/selected_homes_readings.parquet does not hold one row per home and hour for 2018-2019.")
     kwh = df["kwh"].to_numpy(dtype="float64").reshape(n_homes, n_hours)
     est = df["estimated"].to_numpy(dtype="int8").reshape(n_homes, n_hours)
     return home_ids, idx, kwh, est

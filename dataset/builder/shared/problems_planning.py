@@ -1,4 +1,4 @@
-"""Plan the problems to inject: which type, where, when and how big. The answer file comes from here.
+"""Plan the problems to inject: which type, where, when and how big. The answer key comes from here.
 
 Placement rules (checked again in step 5):
   - only in 2019, alternating months: practice (Jan, Mar, May, Jul, Sep, Nov) and
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 import config as C
-from common import PHASE_INDEX, STREAM_EVENTS, period_labels, rng
+from shared.helpers import PHASE_INDEX, STREAM_EVENTS, period_labels, rng
 
 SPLITS = ("practice", "final_test")
 

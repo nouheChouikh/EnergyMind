@@ -1,21 +1,46 @@
 """EnergyMind - Phase 1 settings.
 
-Every invented number of the simulation is in this file, with a one-line reason.
-Change a value, run `python src/run_all.py`, and the whole dataset is rebuilt
-from the same seed.
+Every invented number of the simulation is in this file, with a one-line reason, and so is
+every file path. Change a value, run `python dataset/builder/build_dataset.py`, and the whole
+dataset is rebuilt from the same seed.
 """
 from pathlib import Path
 
 # ----------------------------------------------------------------------------- paths
-ROOT = Path(__file__).resolve().parents[1]
-RAW_DIR = ROOT / "raw"                    # GoiEner download, never committed
-DATA_DIR = ROOT / "data"
-NORMAL_DIR = DATA_DIR / "normal"
-FIG_DIR = ROOT / "figures"
-NOTEBOOK = ROOT / "notebooks" / "01_exploration.ipynb"
-ARCHIVE = RAW_DIR / "imp-pre.tzst"        # https://zenodo.org/records/7362094
-METADATA = RAW_DIR / "metadata.csv"       # same Zenodo record
-WEATHER_CACHE = DATA_DIR / "weather_openmeteo.csv"
+# Every file the pipeline reads or writes. What each data folder is for:
+#   data/system_inputs/  what a utility would send: the only files the detection system may read
+#   data/grading/        answer key and problem-free copies: for scoring only
+#   data/sources/        what the dataset is built from
+DATASET_DIR = Path(__file__).resolve().parents[1]          # the dataset/ folder
+DATA_DIR = DATASET_DIR / "data"
+INPUTS_DIR = DATA_DIR / "system_inputs"
+GRADING_DIR = DATA_DIR / "grading"
+SOURCES_DIR = DATA_DIR / "sources"
+GOIENER_DIR = SOURCES_DIR / "goiener_download"             # 791 MB download, never committed
+
+ARCHIVE = GOIENER_DIR / "imp-pre.tzst"                     # https://zenodo.org/records/7362094
+METADATA = GOIENER_DIR / "metadata.csv"                    # same Zenodo record
+SELECTED_HOMES_READINGS = SOURCES_DIR / "selected_homes_readings.parquet"
+SELECTED_HOMES = SOURCES_DIR / "selected_homes.csv"
+HOMES_SELECTION_LOG = SOURCES_DIR / "homes_selection_log.csv"
+WEATHER_CACHE = SOURCES_DIR / "openmeteo_temperatures.csv"
+
+METER_READINGS_2018 = INPUTS_DIR / "meter_readings_2018.parquet"
+METER_READINGS_2019 = INPUTS_DIR / "meter_readings_2019.parquet"
+TRANSFORMER_READINGS = INPUTS_DIR / "transformer_readings.parquet"
+STREET_WIRING = INPUTS_DIR / "street_wiring.csv"
+HOURLY_CONTEXT = INPUTS_DIR / "hourly_context.csv"
+
+ANSWER_KEY = GRADING_DIR / "answer_key.csv"
+PROBLEM_RECIPES = GRADING_DIR / "problem_recipes.md"
+NORMAL_METER_READINGS = GRADING_DIR / "normal_meter_readings.parquet"
+NORMAL_TRANSFORMER_READINGS = GRADING_DIR / "normal_transformer_readings.parquet"
+
+DATA_CARD = DATA_DIR / "README.md"
+CHECKS_REPORT = DATA_DIR / "dataset_checks_report.txt"
+
+NOTEBOOK = DATASET_DIR / "exploration" / "dataset_exploration.ipynb"
+FIG_DIR = DATASET_DIR / "exploration" / "figures"
 
 # ----------------------------------------------------------------------------- randomness
 SEED = 2026                               # one seed; each purpose draws from its own stream
