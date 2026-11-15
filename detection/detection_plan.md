@@ -65,11 +65,14 @@ Status: agreed design, 12 November 2026. Build from this file.
 - **Dividing the unexplained energy by the phase's energy** keeps the normal range the same at every load, because the transformer meter's error is a percentage of what it measures.
 
 **The trust rule, so anomalies don't distort "usual":**
-- **A reading is untrusted if** a rule caught it, or if the system diagnosed it as a fault or "unknown". It stays untrusted for as long as that incident lasts.
+- **Three states.** Only **trusted** hours feed "usual":
+  - **trusted:** checked by the forest and found normal, or diagnosed as a real change in use. Estimated readings also count as trusted (the utility's own values, kept for history);
+  - **untrusted:** a rule caught it, or the system diagnosed it as a fault or "unknown". It stays untrusted for as long as that incident lasts;
+  - **unchecked:** the forest couldn't score it (see below). Nobody knows whether it's normal, so it stays out of "usual"; the fallback above covers long gaps.
 - **Hours diagnosed as a real change in use** (holiday, new appliance) **stay trusted**, so "usual" follows real life.
 - **Hours of grid events** (outages, sags, surges) are untrusted for the street and grid columns.
 - **Neighbours whose reading is untrusted** are left out of the neighbours' median.
-- **If any meter on a phase is missing,** that phase's balance can't be computed, so its homes aren't scored that hour.
+- **When the forest can't score a home, its hour is unchecked:** if any meter on its phase is missing (the phase's balance can't be computed), or if the transformer's reading is broken on any phase (that phase's balance and `street_vs_usual`, which uses the transformer's total, can't be computed, so no home is scored that hour; only the rules run).
 - **Trust comes only from the system's own decisions** (and later, operators'). Never from the answer key.
 
 *Effect:* once a theft is flagged, its hours stop feeding the home's "usual", so the drop stays visible for as long as the theft lasts. A family that really changed habits gets a new "usual" within 4 weeks.
