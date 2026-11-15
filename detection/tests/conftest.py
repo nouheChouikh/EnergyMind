@@ -2,11 +2,14 @@
 
 A small made-up street: 6 homes (2 per phase, on 2 cables) over 48 hours, a Friday then a Saturday.
 Every value comes from a formula, so each test knows exactly what to expect.
+It is an honest street, with no problem anywhere: each test plants the one problem it checks.
 """
 
 import numpy as np  # number arrays
 import pandas as pd  # tables
 import pytest  # the test tool; @pytest.fixture marks a function that hands fresh test data to each test
+
+from detector.preparation.tables import build_home_hours  # turns the four inputs into the home table
 
 # The 48 hours: Friday 4 and Saturday 5 January 2019.
 HOURS = pd.date_range("2019-01-04 00:00", periods=48, freq="h")
@@ -76,3 +79,12 @@ def transformer_readings(meter_readings, street_wiring):
         table[f"energy_kwh_{phase}"] = (per_phase[phase].to_numpy() * 1.01).round(3)
         table[f"voltage_v_{phase}"] = 232.0
     return table
+
+
+@pytest.fixture
+def home_hours(meter_readings, street_wiring, hourly_context):
+    """The home table of the street above (one row per home and hour), built by the real preparation step.
+
+    The rules' tests start from it: they plant a problem in it, then cut it into the new hour and the memory.
+    """
+    return build_home_hours(meter_readings, street_wiring, hourly_context)
