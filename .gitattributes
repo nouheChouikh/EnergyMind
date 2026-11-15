@@ -8,3 +8,6 @@
 *.parquet binary
 *.png binary
 *.tzst binary
+
+# GitHub's language bar: notebooks count as documentation (their saved outputs would otherwise dominate)
+*.ipynb linguist-documentation
