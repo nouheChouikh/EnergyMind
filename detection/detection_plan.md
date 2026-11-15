@@ -174,7 +174,8 @@ Every hour, when data arrives:
 - false fraud suspicions;
 - grid events confused with house problems;
 - hours until the first alert;
-- held-out problems caught as "unknown" on the right meter.
+- held-out problems caught as "unknown" on the right meter;
+- whether each verdict type's confidence (from practice) holds up: compared with how often that verdict was right in the final test. The final test never changes the confidence.
 
 **To show the forest earns its place:** compare it with plain thresholds on the same six columns (one limit per column, tuned on practice).
 
