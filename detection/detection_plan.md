@@ -99,11 +99,11 @@ Status: agreed design, 12 November 2026. Build from this file.
 |---|---|---|
 | `grid_voltage_vs_usual` | most homes on the phase flagged in the same hour | `voltage_sag_upstream` / `voltage_surge_upstream` |
 | `voltage_vs_neighbours` | only this home | `meter_voltage_drift` |
-| `phase_unexplained_energy`, energy **missing** | compare the energy missing over the last 24 h with each home's drop below its usual over the same hours | `under_reporting` (home named, or candidates listed), or `energy_missing_unattributed` if no home's drop explains it |
+| `phase_unexplained_energy`, energy **missing** | compare the energy missing over the last 24 h with each home's drop below its usual over the same hours | `under_reporting` (home named, or candidates listed), or `energy_missing_unattributed` if no home's drop matches it |
 | `consumption_vs_usual` or `street_vs_usual` | `phase_unexplained_energy` barely contributed | `normal_real_change`: logged, **no alert** |
 | anything else | | `unknown`: a person decides |
 
-**Naming the home:** the candidates are the homes on the phase whose 24-hour drop is at least half the missing energy, closest match first. One candidate means that home is named; several means they're all listed.
+**Naming the home:** a home is named only if the match is decent: its 24-hour drop is about the same as the energy missing over the same hours (how close is a setting, tuned in practice). If several homes match, they're all listed, closest match first. If none matches, nobody is named: `energy_missing_unattributed`, and a person decides. Why: a thief can hide a brand-new appliance behind a bypass, so their recorded use doesn't drop and the missing energy matches nobody; naming the closest home anyway would accuse an innocent one. Even a decent match makes a home a suspect, never proof.
 
 There's **no pattern for energy appearing** (meters reporting more than the transformer delivered), so the held-out over-reporting can only show up as `unknown`. That's what keeps the test fair.
 
@@ -205,4 +205,5 @@ Two rules for this table:
 **Known limits of the MVP:**
 - Small, slow problems will be caught late or missed until improvement 1.
 - Subtle thefts are often reported as a list of candidates, not one named home.
+- A theft hidden behind a brand-new appliance can't be tied to a home: it's reported as energy missing on the phase.
 - The physics in the dataset is simulated, so the results are an upper bound.
