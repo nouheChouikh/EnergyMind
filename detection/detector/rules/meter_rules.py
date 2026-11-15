@@ -29,60 +29,60 @@ from detector import settings  # the limits: 1.5 x the contract, 4 identical rea
 READING = ["kwh", "voltage_v", "current_a"]
 
 
-def find_missing(new_hour):
+def find_missing(new_hour_home):
     """True for each home whose reading at the new hour has an empty value (kWh, voltage or current).
 
-    new_hour: the home table's rows for the hour being checked (one row per home).
-    Returns one True/False per row of new_hour, in the same order.
+    new_hour_home: the home table's rows for the hour being checked (one row per home).
+    Returns one True/False per row of new_hour_home, in the same order.
     """
     # One empty value is enough: a reading with a hole in it can't be checked.
-    return new_hour[READING].isna().any(axis=1)
+    return new_hour_home[READING].isna().any(axis=1)
 
 
-def find_impossible(new_hour):
+def find_impossible(new_hour_home):
     """True for each home whose measured reading at the new hour can't physically happen.
 
-    new_hour: the home table's rows for the hour being checked (one row per home).
-    Returns one True/False per row of new_hour, in the same order.
+    new_hour_home: the home table's rows for the hour being checked (one row per home).
+    Returns one True/False per row of new_hour_home, in the same order.
     """
-    kwh = new_hour["kwh"]
+    kwh = new_hour_home["kwh"]
     # Negative energy: these homes have no solar panels, so energy only flows in.
     negative = kwh < 0
     # Energy without voltage: with no voltage, no current flows, so no energy can be used.
-    energy_at_zero_volts = (new_hour["voltage_v"] == 0) & (kwh > 0)
+    energy_at_zero_volts = (new_hour_home["voltage_v"] == 0) & (kwh > 0)
     # Far too much energy: the kWh used in one hour is the average kW over that hour, and the meter cuts the
     # power when a home draws more than its contract, so it can't be far above the contracted kW.
-    above_contract = kwh > settings.IMPOSSIBLE_KWH_FACTOR * new_hour["contracted_kw"]
+    above_contract = kwh > settings.IMPOSSIBLE_KWH_FACTOR * new_hour_home["contracted_kw"]
     # Only measured readings count: an estimated value was filled in by the utility, not by the meter.
     # (An empty value fails every comparison above, so a missing reading is never also impossible.)
-    measured = new_hour["estimated"] == 0
+    measured = new_hour_home["estimated"] == 0
     return measured & (negative | energy_at_zero_volts | above_contract)
 
 
-def find_stuck(new_hour, memory):
+def find_stuck(new_hour_home, home_memory):
     """True for each home whose reading at the new hour is identical to its 3 readings before it.
 
-    new_hour: the home table's rows for the hour being checked (one row per home).
-    memory: the home table's rows for earlier hours, as kept by the operator app. It may hold more hours and
-        more columns (like trust): only each meter's 3 previous readings are used.
-    Returns one True/False per row of new_hour, in the same order.
+    new_hour_home: the home table's rows for the hour being checked (one row per home).
+    home_memory: the home table's rows for earlier hours, as kept by the operator app. It may hold more hours
+        and more columns (like trust): only each meter's 3 previous readings are used.
+    Returns one True/False per row of new_hour_home, in the same order.
     """
     # Every recent reading, findable by home and hour.
     columns = ["home_id", "timestamp", *READING, "estimated"]
-    recent = pd.concat([memory[columns], new_hour[columns]]).set_index(["home_id", "timestamp"])
+    recent = pd.concat([home_memory[columns], new_hour_home[columns]]).set_index(["home_id", "timestamp"])
 
     # Start with every home stuck, then clear each home whose last readings break the run.
-    stuck = pd.Series(True, index=new_hour.index)
+    stuck = pd.Series(True, index=new_hour_home.index)
     for hours_back in range(settings.STUCK_MIN_HOURS):  # 0 (the new hour itself), then 1, 2 and 3 hours before
         # Each home's reading hours_back hours before the new hour. An hour absent from the memory comes back empty.
         wanted = pd.MultiIndex.from_arrays(
-            [new_hour["home_id"], new_hour["timestamp"] - pd.Timedelta(hours=hours_back)]
+            [new_hour_home["home_id"], new_hour_home["timestamp"] - pd.Timedelta(hours=hours_back)]
         )
         earlier = recent.reindex(wanted)
-        earlier.index = new_hour.index  # line each earlier reading up with its home's row in new_hour
+        earlier.index = new_hour_home.index  # line each earlier reading up with its home's row in new_hour_home
         # That reading must be measured, and identical to the new one in kWh, voltage and current.
         # An empty value never equals anything, so an empty or absent reading breaks the run.
         measured = earlier["estimated"] == 0
-        identical = (earlier[READING] == new_hour[READING]).all(axis=1)
+        identical = (earlier[READING] == new_hour_home[READING]).all(axis=1)
         stuck = stuck & measured & identical
     return stuck

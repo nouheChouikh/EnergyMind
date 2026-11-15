@@ -67,17 +67,19 @@ def meter_readings():
 
 @pytest.fixture
 def transformer_readings(meter_readings, street_wiring):
-    """One row per hour: each phase's energy = its homes' kWh + 1% cable losses, 232 V on every phase.
+    """One row per hour: each phase's energy = its homes' kWh + 1% cable losses, about 232 V on every phase.
 
     The +1% keeps the transformer's energy different from the homes' sum, so tests can tell the two apart.
+    The voltage moves a little every hour, as a real one does, so an honest transformer reading never repeats.
     """
     # Each reading with its home's phase, then the kWh added up per hour and phase.
     joined = meter_readings.merge(street_wiring[["home_id", "phase"]], on="home_id")
     per_phase = joined.pivot_table(index="timestamp", columns="phase", values="kwh", aggfunc="sum")
     table = pd.DataFrame({"timestamp": per_phase.index})
+    step = np.arange(len(table))  # 0, 1, 2 ... 47
     for phase in ["A", "B", "C"]:
         table[f"energy_kwh_{phase}"] = (per_phase[phase].to_numpy() * 1.01).round(3)
-        table[f"voltage_v_{phase}"] = 232.0
+        table[f"voltage_v_{phase}"] = (232.0 + 0.1 * (step % 10)).round(1)  # 232.0, 232.1 ... 232.9, 232.0 ...
     return table
 
 

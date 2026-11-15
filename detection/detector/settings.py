@@ -21,9 +21,14 @@ STUCK_MIN_HOURS = 4
 # Honest 2018 maximum: 1.29 times (12 homes went slightly over, mostly for a single hour).
 IMPOSSIBLE_KWH_FACTOR = 1.5
 
-# All meters missing: at least this share of the street's meters empty in the same hour.
-# Nearly all at once means one collection failure, not many separate broken meters.
-MISSING_ALL_SHARE = 0.9
+# "Nearly all", the same in every street rule:
+#   - outage: nearly all of a phase's homes show no voltage while the transformer phase reads 0;
+#   - transformer meter wrong: nearly all of them show voltage while the transformer phase reads 0;
+#   - all meters missing: nearly all of the street's meters sent nothing (one data link failure, not many
+#     separate broken meters).
+# One or two odd meters (e.g. stuck on their last value) can't block a clear verdict. When the homes disagree
+# among themselves (between 10% and 90%, e.g, 45%), no street rule fires: the evidence contradicts itself.
+NEARLY_ALL_SHARE = 0.9
 
 # ----------------------------------------------------------------------------- input checks (plan step 1)
 # What the median reading must look like, to catch wrong units.
