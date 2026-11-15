@@ -7,7 +7,7 @@ EnergyMind is a trust layer for a smart-metered neighbourhood. Every hour it che
 | Stage | Folder | What | Status |
 |---|---|---|---|
 | 1. Dataset | `dataset/` | a simulated street built from real smart-meter data, with documented injected problems | done |
-| 2. Detection | `detection/` | rules, one losses regression, an Isolation Forest, explanations and diagnosis | next: designed in [`detection/detection_plan.md`](detection/detection_plan.md) |
+| 2. Detection | `detection/` | rules, one losses regression, an Isolation Forest, explanations and diagnosis | in progress: layout in place, built part by part (see [`detection/README.md`](detection/README.md)) |
 | 3. Operator app | `operator_app/` (created when the work starts) | an Angular app where operators follow incidents and give their decisions | later |
 
 ## Repository map
@@ -22,7 +22,12 @@ dataset/                  stage 1: the dataset
 │   └── sources/          what the dataset is built from
 └── exploration/          the exploration notebook and its charts
 detection/                stage 2: the detection system
-└── detection_plan.md     the design to build from
+├── README.md             guide to this stage: what each part does, how to run it
+├── detection_plan.md     the design to build from
+├── detector/             the detection system itself: used by evaluation now, by the operator app later
+├── evaluation/           runs the detector on the dataset: learning, practice, final test
+├── outputs/              what evaluation generates: the saved model and the reports
+└── tests/                automatic checks of the code
 ```
 
 ## The dataset
@@ -43,7 +48,7 @@ Tested with Python 3.12.10 and the exact library versions pinned in `dataset/bui
 
 This rebuilds the dataset and runs the checks and the notebook; the same seed gives the same dataset. To redo the cleaning from the original archive, put `imp-pre.tzst` and `metadata.csv` from Zenodo record 7362094 in `dataset/data/sources/goiener_download/` and run `python dataset/builder/build_dataset.py --from-raw`. Details in [`dataset/README.md`](dataset/README.md).
 
-Every pull request into `main` rebuilds the dataset on GitHub and checks that it matches the committed files ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+Every pull request into `main` runs two checks on GitHub ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): it rebuilds the dataset and checks that it matches the committed files, and it runs the detection tests.
 
 ## Licences and credit
 - Code: MIT (`LICENSE`).

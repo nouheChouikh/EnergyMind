@@ -1,0 +1,23 @@
+# Makes detector/ an installable library: `pip install -e detection` (from the repository root).
+
+# The tool pip uses to build and install the library.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# The library's identity.
+[project]
+name = "energymind-detector"
+version = "0.1.0"
+description = "EnergyMind detection system: learns what a normal street looks like, then checks each hour."
+requires-python = ">=3.12"
+# Libraries detector/ uses; their exact versions are pinned in requirements.txt.
+dependencies = ["numpy", "pandas", "scikit-learn", "shap"]
+
+# Only detector/ and its sub-folders belong to the library (not evaluation/ or tests/).
+[tool.setuptools.packages.find]
+include = ["detector*"]
+
+# pytest settings: the tests live in tests/.
+[tool.pytest.ini_options]
+testpaths = ["tests"]

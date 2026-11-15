@@ -3,6 +3,11 @@
 *.csv text eol=lf
 *.txt text eol=lf
 *.ipynb text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
 *.parquet binary
 *.png binary
 *.tzst binary
+
+# GitHub's language bar: notebooks count as documentation (their saved outputs would otherwise dominate)
+*.ipynb linguist-documentation
