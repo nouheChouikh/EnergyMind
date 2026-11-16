@@ -211,6 +211,16 @@ def test_hour_absent_from_the_memory_is_not_stuck(home_hours):
     assert flagged_homes(new_hour_home, find_stuck(new_hour_home, memory_without_10)) == set()
 
 
+def test_zero_volt_readings_never_count_as_stuck(home_hours):
+    """A stuck meter freezes on a real reading; 0 V means no power reached the meter, so it is never "stuck"."""
+    # Prepare: H3 reads 0 kWh, 0 V, 0 A from 09:00 to 12:00 (4 identical readings), with power on its phase.
+    for hour in (9, 10, 11, 12):
+        home_hours.loc[at(home_hours, "H3", friday(hour)), READING] = 0.0
+    new_hour_home, home_memory = split_at(home_hours, friday(12))
+    # Run and check: nobody is stuck (0 V is an outage or a home without supply, not a frozen reading).
+    assert flagged_homes(new_hour_home, find_stuck(new_hour_home, home_memory)) == set()
+
+
 # =============================================================================
 # STREET RULES (the transformer and whole phases): helpers
 # =============================================================================

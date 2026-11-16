@@ -17,6 +17,8 @@ Choices:
     since the meter cuts the power when a home draws too much.
   - Stuck needs the whole reading (kWh, V and I): an honest meter's energy can stay flat, its voltage moves.
     Honest meters repeat for up to 3 readings (2018), so the alarm rings at the 4th: 2 hours after the freeze.
+  - Stuck skips readings at 0 V: a stuck meter freezes on a real reading, and 0 V means no power reached the
+    meter (an outage, or rarely one home without supply which the forest should flag).
   - These rules know nothing about power cuts: findings.py runs the street rules first and keeps one
     verdict per home-hour.
 """
@@ -71,8 +73,10 @@ def find_stuck(new_hour_home, home_memory):
     columns = ["home_id", "timestamp", *READING, "estimated"]
     recent = pd.concat([home_memory[columns], new_hour_home[columns]]).set_index(["home_id", "timestamp"])
 
-    # Start with every home stuck, then clear each home whose last readings break the run.
-    stuck = pd.Series(True, index=new_hour_home.index)
+    # Start with every home whose new reading shows voltage, then clear each home whose last readings break the run.
+    # A reading at 0 V is never stuck: a stuck meter freezes on a real reading, and 0 V means no power reached the
+    # meter (an outage, which the street rules name, or rarely one home without supply which the forest should flag).
+    stuck = new_hour_home["voltage_v"] > 0
     for hours_back in range(settings.STUCK_MIN_HOURS):  # 0 (the new hour itself), then 1, 2 and 3 hours before
         # Each home's reading hours_back hours before the new hour. An hour absent from the memory comes back empty.
         wanted = pd.MultiIndex.from_arrays(
