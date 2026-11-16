@@ -29,7 +29,7 @@ detection/
 │   ├── learning.py                 learn(): normal history → trained model
 │   ├── hourly_check.py             start_memory() and check_hour(): one hour → results
 │   ├── preparation/                tables.py, input_checks.py
-│   ├── rules/                      meter_rules.py, street_rules.py
+│   ├── rules/                      meter_rules.py, street_rules.py, findings.py (all rules, in order)
 │   ├── columns/                    losses_regression.py, trust.py, usual.py, six_columns.py
 │   ├── forest/                     forest_training.py, forest_scoring.py
 │   ├── diagnosis/                  shap_reasons.py, verdict_patterns.py, home_naming.py
@@ -93,15 +93,19 @@ Every pull request into `main` also runs these tests on GitHub (the "Detection t
 
 ## Status
 
-The layout is in place: every file exists and says what it is for, the library installs, and the boundary checks run, locally and on every pull request. The scripts don't do anything yet. The code is built part by part, in this order:
+Two words, used the same way everywhere: a **step** is one of the 11 steps of `detection_plan.md` (what the system does); a **part** is one row of the build order below (what gets built, in which order). One part can cover several steps.
 
-1. preparation and rules
-2. losses, trust, usual, the six columns
-3. the forest
-4. learning and `run_learning.py` (the first saved model)
-5. diagnosis
-6. incidents, confidence, cards
-7. memory and the hourly check
-8. practice
-9. feedback
-10. the final test, at the very end
+| Part | What is built | Plan steps | Where | Status |
+|---|---|---|---|---|
+| 1 | preparation and rules | 1, 2 | `detector/preparation/`, `detector/rules/` | **built** |
+| 2 | losses, trust, usual, the six columns | 3, 4 | `detector/columns/` | next |
+| 3 | the forest | 5 | `detector/forest/` | |
+| 4 | learning and the first saved model | 10 (learning) | `detector/learning.py`, `detector/trained_model.py`, `evaluation/run_learning.py` | |
+| 5 | diagnosis | 6 | `detector/diagnosis/` | |
+| 6 | incidents, confidence, cards | 7 | `detector/incidents/` | |
+| 7 | memory and the hourly check | 9 | `detector/memory.py`, `detector/hourly_check.py` | |
+| 8 | practice | 10 (practice) | `evaluation/run_practice.py` | |
+| 9 | feedback | 8 | `detector/feedback/` | |
+| 10 | the final test, at the very end | 10 (final test) | `evaluation/run_final_test.py` | |
+
+Part 1 is built and tested: the home and phase tables, the input checks, and the definition rules, combined by `rules/findings.py` into one table of findings per hour. Every rule is built for live use: it judges the new hour from the new hour plus the memory. The `evaluation/` scripts don't do anything yet; they start working with part 4.

@@ -16,16 +16,21 @@ Status: agreed design, 12 November 2026. Build from this file.
 
 ## Step 2. Rules for definitions
 
+Every rule judges the **new hour** only, from the new hour's readings plus the memory the operator app sends (the two stuck checks read the 3 previous hours from it). A decision is made once and never revisited.
+
 | Rule | Fires when | Verdict |
 |---|---|---|
-| Missing | no reading | `missing_data_one_meter`. If most meters are missing while the transformer still measures: `missing_data_all_meters` |
-| Impossible | negative kWh, 0 V while kWh > 0, or kWh above contracted power × 1 hour (check on 2018 that no honest reading crosses it) | `impossible_value` |
-| Stuck | the whole reading (kWh, V, I) identical for 4+ hours (honest maximum in 2018: 3) | `stuck_meter` |
-| Outage | transformer phase (or all phases) at 0, with its meters at 0 | `outage_phase` / `outage_street` |
-| Transformer problem | the transformer's reading is missing, stuck or impossible | `reference_meter_problem` |
+| Missing | the reading's kWh, voltage or current is empty | `missing_data_one_meter` |
+| Impossible | a measured reading with negative kWh, kWh above 0 at 0 V, or kWh above 1.5 × the contracted power (honest 2018 maximum: 1.29 ×) | `impossible_value` |
+| Stuck | the whole reading (kWh, V, I) identical to the 3 previous hours: 4 identical readings (honest maximum in 2018: 3). Estimated readings and readings at 0 V never count | `stuck_meter` |
+| Outage | a transformer phase reads 0 kWh and 0 V, **and** nearly all (90%) of its homes show no voltage (0 V, or nothing sent) | `outage_phase`, or `outage_street` when all 3 phases are out |
+| All meters missing | nearly all (90%) of the street's meters sent nothing, and the transformer doesn't read 0 kWh and 0 V on every phase (that would be an outage) | `missing_data_all_meters` |
+| Transformer problem | the transformer's reading on a phase is empty, negative, shows energy at 0 V, reads 0 kWh and 0 V while nearly all (90%) of its homes show voltage, or is identical for 4 hours (readings at 0 V excluded) | `reference_meter_problem`, one per broken phase (the dataset never injects it) |
 
-- A reading caught by a rule is not scored by the forest, and it's marked **untrusted** (see step 4).
-- Estimated readings are kept and used in history, but not scored.
+- **The transformer and the homes must agree.** A transformer phase at 0 kWh and 0 V is an outage only if its homes have no voltage either; if they have voltage, the transformer's meter is wrong. When the homes disagree among themselves (10% to 90% show voltage), no rule fires: the evidence contradicts itself, so the forest and an operator look at it.
+- **The order, so one problem gives one finding** (`rules/findings.py`): transformer problems, then outages, then all meters missing, then the meter rules (missing, impossible, stuck) for the homes no street finding covers. An outage covers the homes on its phases; all meters missing covers every home (readings that slip through a failing collection system can't be trusted). Each home gets at most one verdict; a meter frozen on an impossible value is reported as impossible.
+- A reading caught by a rule, or covered by a street finding, is not scored by the forest, and it's marked **untrusted** (see step 4).
+- Estimated readings are kept and used in history, but not scored, and they're never impossible or stuck.
 
 *Why:* these are definitions, so a rule is exact. A model would only make them less reliable.
 
@@ -151,7 +156,8 @@ There's **no pattern for energy appearing** (meters reporting more than the tran
 
 ## Step 9. The hourly loop
 
-Every hour, when data arrives:
+Every hour, the operator app sends the new hour's readings plus a memory: the past hours' home and phase rows (about 28 days, what the usual needs), each with its trust state. The detector stores nothing itself; it judges the new hour once and returns the new rows with their trust state, which the app adds to the memory.
+
 1. Run the definition rules.
 2. Compute the six columns, using trusted past hours only.
 3. Score the 75 home rows with the forest.
@@ -167,7 +173,7 @@ Every hour, when data arrives:
 
 | Phase | Data | What you do |
 |---|---|---|
-| **Learning** (2018) | readings, transformer, wiring, context | fit the losses regression, compute the columns, train the forest, set the starting T, freeze |
+| **Learning** (2018) | readings, transformer, wiring, context | fit the losses regression on the whole year; replay 2018 hour by hour through the same functions as live (rules, columns, trust) to build the forest's rows; train the forest, set the starting T, freeze |
 | **Practice** (odd months of 2019) | the same, plus the practice answers | run the hourly loop as if live; compare incidents with the answers; tune T, the candidate rule and the incident closing, **one change at a time**; fill the confidence table; freeze |
 | **Final test** (even months of 2019) | the same, plus the test answers | run **once**, then report |
 
@@ -210,4 +216,6 @@ Two rules for this table:
 - Small, slow problems will be caught late or missed until improvement 1.
 - Subtle thefts are often reported as a list of candidates, not one named home.
 - A theft hidden behind a brand-new appliance can't be tied to a home: it's reported as energy missing on the phase.
+- A stuck meter is recognised at its 4th identical reading, so the alarm comes 2 hours after it froze (honest meters repeat a reading up to 3 times in a row). Those 2 earlier hours stay as they were judged.
+- One home's supply cut, recorded as 0 V while its phase has power, isn't named by a rule: the forest flags it (its voltage is far below its neighbours') and an operator decides (generally, a supply cut wouldn't send anything anyway so it would count as missing)
 - The physics in the dataset is simulated, so the results are an upper bound.

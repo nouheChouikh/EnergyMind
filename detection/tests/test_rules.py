@@ -11,7 +11,9 @@ homes' total and count include them), plant transformer problems in the phase ta
 import pandas as pd  # tables
 import pytest  # the test tool; @pytest.mark.parametrize runs one test once per value in a list
 
+from detector.data_formats import RULE_FINDINGS_COLUMNS  # the findings table's expected columns
 from detector.preparation.tables import build_home_hours, build_phase_hours  # builds the two tables
+from detector.rules.findings import find_rule_findings  # the code being tested
 from detector.rules.meter_rules import find_impossible, find_missing, find_stuck  # the code being tested
 from detector.rules.street_rules import (  # the code being tested
     find_missing_all,
@@ -547,3 +549,185 @@ def test_every_meter_silent_in_a_street_power_cut_is_an_outage(home_hours, trans
     # Run and check: not a data link failure, but an outage on all 3 phases.
     assert not find_missing_all(new_hour_home, new_hour_phase)
     assert flagged_phases(new_hour_phase, find_outages(new_hour_home, new_hour_phase)) == {"A", "B", "C"}
+
+
+# =============================================================================
+# FINDINGS (all rules together): helpers
+# =============================================================================
+def findings_at(home_hours, phases, hour):
+    """Runs every rule at that hour, as the live system would, and returns the findings table."""
+    new_hour_home, home_memory = split_at(home_hours, hour)
+    new_hour_phase, phase_memory = split_at(phases, hour)
+    return find_rule_findings(new_hour_home, new_hour_phase, home_memory, phase_memory)
+
+
+def rows(findings):
+    """The findings as a set of (scope, phase, home_id, verdict), e.g. {("phase", "B", None, "outage_phase")}.
+
+    Empty cells become None (pandas may store them as None or as NaN, depending on the column type).
+    Fails the test if two findings are identical, since a set would hide the duplicate.
+    """
+    def none_if_empty(value):
+        return None if pd.isna(value) else value
+
+    as_tuples = [
+        tuple(none_if_empty(value) for value in row)
+        for row in findings[["scope", "phase", "home_id", "verdict"]].itertuples(index=False, name=None)
+    ]
+    assert len(set(as_tuples)) == len(as_tuples)
+    return set(as_tuples)
+
+
+# =============================================================================
+# FINDINGS (all rules together): tests
+# =============================================================================
+# ----------------------------------------------------------------------------- an honest street
+def test_honest_street_gives_an_empty_findings_table(home_hours, transformer_readings):
+    """No rule fires on the honest street: the findings table is empty, but has its 5 columns."""
+    # Prepare: the honest street's phase table.
+    phases = build_phase_hours(home_hours, transformer_readings)
+    # Run: every rule at Friday 12:00.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: no row, and exactly the columns listed in data_formats.py.
+    assert len(findings) == 0
+    assert list(findings.columns) == RULE_FINDINGS_COLUMNS
+
+
+# ----------------------------------------------------------------------------- street findings
+def test_phase_outage_covers_its_homes(home_hours, transformer_readings):
+    """Phase B out: one outage_phase row on B, dated at the new hour, and no row for its homes H3 and H4.
+
+    H4 sends nothing (a meter without power may not send), so the missing rule fires on it: only the outage
+    covering its homes keeps H4 off the list.
+    """
+    # Prepare: phase B loses power at 12:00. H3 reads 0, H4 sends nothing...
+    home_hours.loc[at(home_hours, "H3", friday(12)), READING] = 0.0
+    home_hours.loc[at(home_hours, "H4", friday(12)), READING] = float("nan")
+    phases = build_phase_hours(home_hours, transformer_readings)
+    # ...and the transformer's phase B reads 0 kWh, 0 V.
+    phases.loc[on_phase(phases, "B", friday(12)), TRANSFORMER] = 0.0
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: exactly one row, the outage on B, at 12:00.
+    assert rows(findings) == {("phase", "B", None, "outage_phase")}
+    assert (findings["timestamp"] == friday(12)).all()
+
+
+def test_two_phases_out_give_two_phase_rows(home_hours, transformer_readings):
+    """Phases A and B out, C fine: one outage_phase row for each phase that's out."""
+    # Prepare: phases A and B lose power at 12:00 (their homes and the transformer read 0).
+    for phase in ("A", "B"):
+        cut_homes(home_hours, phase, friday(12))
+    phases = build_phase_hours(home_hours, transformer_readings)
+    for phase in ("A", "B"):
+        phases.loc[on_phase(phases, phase, friday(12)), TRANSFORMER] = 0.0
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: two rows, one per phase out.
+    assert rows(findings) == {("phase", "A", None, "outage_phase"), ("phase", "B", None, "outage_phase")}
+
+
+def test_every_phase_out_gives_one_street_row(home_hours, transformer_readings):
+    """All 3 phases out: one outage_street row, not 3 phase rows."""
+    # Prepare: the whole street loses power at 12:00 (every home and every transformer phase read 0).
+    home_hours.loc[home_hours["timestamp"] == friday(12), READING] = 0.0
+    phases = build_phase_hours(home_hours, transformer_readings)
+    phases.loc[phases["timestamp"] == friday(12), TRANSFORMER] = 0.0
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: exactly one row, for the whole street.
+    assert rows(findings) == {("street", None, None, "outage_street")}
+
+
+def test_long_street_outage_never_turns_into_stuck_meters(home_hours, transformer_readings):
+    """A 6-hour street outage, checked hour by hour as live: one street row every hour, never a stuck meter."""
+    # Prepare: the whole street loses power from 09:00 to 14:00 (6 hours of 0 everywhere).
+    outage_hours = [friday(hour) for hour in range(9, 15)]
+    home_hours.loc[home_hours["timestamp"].isin(outage_hours), READING] = 0.0
+    phases = build_phase_hours(home_hours, transformer_readings)
+    phases.loc[phases["timestamp"].isin(outage_hours), TRANSFORMER] = 0.0
+    # Run and check, hour by hour: only the street outage, every hour.
+    for hour in outage_hours:
+        assert rows(findings_at(home_hours, phases, hour)) == {("street", None, None, "outage_street")}
+
+
+def test_every_meter_silent_gives_one_street_row(home_hours, transformer_readings):
+    """Every meter silent while the transformer measures: one missing_data_all_meters row, not 6 home rows."""
+    # Prepare: at 12:00 no meter sends anything; the transformer measures normally.
+    home_hours.loc[home_hours["timestamp"] == friday(12), READING] = float("nan")
+    phases = build_phase_hours(home_hours, transformer_readings)
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: exactly one row, for the whole street.
+    assert rows(findings) == {("street", None, None, "missing_data_all_meters")}
+
+
+def test_all_meters_missing_covers_even_the_meter_that_sent(meter_readings, street_wiring, hourly_context,
+                                                            transformer_readings):
+    """During a data link failure, the one meter that did send gets no row: its reading came through a failing
+    collection system, so it can't be trusted."""
+    # Prepare: a 14-home street (6 homes need all 6 silent to reach 90%). At 12:00, 13 of 14 meters (93%)
+    # send nothing, and the one that did, H5, sends an impossible negative reading.
+    home_hours = street_with_ten_homes_on_b(meter_readings, street_wiring, hourly_context)
+    is_12 = home_hours["timestamp"] == friday(12)
+    home_hours.loc[is_12 & (home_hours["home_id"] != "H5"), READING] = float("nan")
+    home_hours.loc[at(home_hours, "H5", friday(12)), "kwh"] = -0.4
+    phases = build_phase_hours(home_hours, transformer_readings)
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: only the street row; H5 gets no row of its own.
+    assert rows(findings) == {("street", None, None, "missing_data_all_meters")}
+
+
+def test_transformer_problem_gives_one_transformer_row(home_hours, transformer_readings):
+    """Transformer broken on B: one reference_meter_problem row on B; its homes are fine, so they get no row."""
+    # Prepare: at 12:00 the transformer's phase B reports negative energy; every home measures normally.
+    phases = build_phase_hours(home_hours, transformer_readings)
+    phases.loc[on_phase(phases, "B", friday(12)), "transformer_kwh"] = -1.0
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: exactly one row, the transformer's meter on B.
+    assert rows(findings) == {("transformer", "B", None, "reference_meter_problem")}
+
+
+# ----------------------------------------------------------------------------- home findings
+def test_home_problems_give_one_row_each_with_their_phase(home_hours, transformer_readings):
+    """H1 impossible, H3 silent and H5 stuck at 12:00: three home rows, each with its home's phase."""
+    # Prepare: H1 (phase A) reports -0.4 kWh, H3 (phase B) sends nothing, H5 (phase C) repeats its 09:00 reading.
+    home_hours.loc[at(home_hours, "H1", friday(12)), "kwh"] = -0.4
+    home_hours.loc[at(home_hours, "H3", friday(12)), READING] = float("nan")
+    freeze(home_hours, "H5", last_real_hour=9, nb_copies=3)
+    phases = build_phase_hours(home_hours, transformer_readings)
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: one row per home, with its phase and its verdict.
+    assert rows(findings) == {
+        ("home", "A", "H1", "impossible_value"),
+        ("home", "B", "H3", "missing_data_one_meter"),
+        ("home", "C", "H5", "stuck_meter"),
+    }
+
+
+def test_meter_frozen_on_an_impossible_value_is_reported_as_impossible(home_hours, transformer_readings):
+    """H3 repeats a negative reading for 4 hours: both impossible and stuck, but one verdict, impossible_value."""
+    # Prepare: H3 reads -0.4 kWh, 229.3 V, 1.8 A at 09:00, 10:00, 11:00 and 12:00.
+    for hour in (9, 10, 11, 12):
+        home_hours.loc[at(home_hours, "H3", friday(hour)), READING] = [-0.4, 229.3, 1.8]
+    phases = build_phase_hours(home_hours, transformer_readings)
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: exactly one row for H3, impossible (the stronger statement).
+    assert rows(findings) == {("home", "B", "H3", "impossible_value")}
+
+
+def test_phase_outage_and_a_home_problem_elsewhere_both_appear(home_hours, transformer_readings):
+    """Phase B out and H5 (on phase C) impossible: the outage covers only phase B's homes, so both rows appear."""
+    # Prepare: phase B loses power at 12:00 (its homes and the transformer read 0); H5 reports -0.4 kWh.
+    cut_homes(home_hours, "B", friday(12))
+    home_hours.loc[at(home_hours, "H5", friday(12)), "kwh"] = -0.4
+    phases = build_phase_hours(home_hours, transformer_readings)
+    phases.loc[on_phase(phases, "B", friday(12)), TRANSFORMER] = 0.0
+    # Run.
+    findings = findings_at(home_hours, phases, friday(12))
+    # Check: the outage on B, and H5's impossible reading.
+    assert rows(findings) == {("phase", "B", None, "outage_phase"), ("home", "C", "H5", "impossible_value")}
