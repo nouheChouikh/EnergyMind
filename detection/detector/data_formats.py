@@ -10,7 +10,7 @@ Each list names the columns the detector needs from a table, in order. The files
 METER_READINGS_COLUMNS = ["home_id", "timestamp", "kwh", "voltage_v", "current_a", "estimated"]
 
 # Transformer readings: one row per hour, energy (kWh) and voltage (V) on each phase.
-# Left out: energy_kwh_total (the street total; the detector adds the three phases itself when needed).
+# Left out: energy_kwh_total (the street total: the detector works phase by phase).
 TRANSFORMER_READINGS_COLUMNS = [
     "timestamp",
     "energy_kwh_A", "energy_kwh_B", "energy_kwh_C",
@@ -23,7 +23,7 @@ TRANSFORMER_READINGS_COLUMNS = [
 STREET_WIRING_COLUMNS = ["home_id", "cable", "phase", "contracted_kw"]
 
 # Hourly context: one row per hour (weekend and public holiday flags, 1 or 0).
-# Left out: temperature_c (the six columns use the street's own usual instead, plan step 4),
+# Left out: temperature_c (weather is a real change in use, not a fault: the usual follows the season, plan step 4),
 # holiday_name (the flag is enough), and period (dataset bookkeeping that tells practice from final test:
 # a utility never sends it, and the detector must never use it).
 HOURLY_CONTEXT_COLUMNS = ["timestamp", "is_weekend", "is_holiday"]

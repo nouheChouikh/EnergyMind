@@ -1,10 +1,10 @@
-"""The six columns for one hour: what the forest looks at for every home.
+"""The five columns for one hour: what the forest looks at for every home.
 
 Why a model and not if-else rules: each column alone is ambiguous. A home using less can be a family
 on holiday or a theft; a home's voltage dropping can be the grid or a broken meter. Only the columns
 together tell them apart (less consumption + energy missing on the phase = suspicious; less consumption
 + energy adding up = normal life). The forest learns from a year of normal hours which combinations are
-normal, including combinations nobody wrote a rule for. An if-else rule for every combination of six
+normal, including combinations nobody wrote a rule for. An if-else rule for every combination of five
 columns can't be written; the forest scores the whole row at once.
 """
 
@@ -13,5 +13,4 @@ columns can't be written; the forest scores the whole row at once.
 #   voltage_vs_neighbours     is this meter's voltage out of line with its neighbours? (a meter's voltage sensor)
 #   phase_unexplained_energy  does the phase's energy add up, after cable losses?    (theft vs holiday)
 #   grid_voltage_vs_usual     is the grid's voltage itself off?                      (sag or surge: grid, not house)
-#   street_vs_usual           is the whole street using more or less than usual?     (weather, holidays: everyone)
 #   hour                      what time is it?                                       (night and day differ)
