@@ -44,15 +44,16 @@ def meter_readings():
 
     The daily swing makes hour-to-hour changes much bigger than the 1% cable losses, as on a real street;
     without it, a one-hour shift between the transformer and the meters couldn't be told apart from losses.
-    A tiny rise every hour on top keeps every reading different, so no reading repeats by accident.
+    Two hours in a row never read the same (the swing changes kWh every hour, and the voltage has its own small
+    wobble), so an honest home never looks stuck.
     """
     tables = []
     hour_of_day = HOURS.hour.to_numpy()  # 0 to 23
     for number, (home_id, _cable, _phase, _kw) in enumerate(HOMES):
-        step = np.arange(len(HOURS))  # 0, 1, 2 ... 47
+        step = np.arange(len(HOURS))  # 0, 1, 2 ... 47, used by the voltage's small wobble below
         # Daily swing between 0 and 0.3 kWh: sin(...) is -1 at 6:00 and +1 at 18:00.
         daily = 0.3 * (1 + np.sin(2 * np.pi * (hour_of_day - 12) / 24)) / 2
-        kwh = 0.2 + 0.05 * number + daily + 0.001 * step  # each home and each hour has its own value
+        kwh = 0.2 + 0.05 * number + daily  # each home has its own level; the swing changes it every hour
         tables.append(pd.DataFrame({
             "home_id": home_id,
             "timestamp": HOURS,
