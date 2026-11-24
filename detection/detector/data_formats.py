@@ -1,4 +1,4 @@
-"""What goes in (readings) and what comes out (findings, later incidents and cards).
+"""What goes in (readings), what learning keeps (the losses fit) and what comes out (findings, later incidents).
 
 Each list names the columns the detector needs from a table, in order. The files a utility sends
 (here, the dataset's system_inputs files) may hold more columns: the detector ignores them.
@@ -45,6 +45,11 @@ PHASE_HOURS_COLUMNS = [
     "timestamp", "phase", "transformer_kwh", "transformer_voltage_v",
     "homes_kwh", "nb_homes_reporting", "nb_homes_on_phase",
 ]
+
+# ----------------------------------------------------------------------------- learned once, at learning
+# Losses fit (plan step 3): one row per phase, kept in the trained model and used every hour.
+#   a, b   expected cable losses = a + b x E², where E is the transformer's energy on the phase (kWh)
+LOSSES_FIT_COLUMNS = ["phase", "a", "b"]
 
 # ----------------------------------------------------------------------------- results
 # Rule findings (plan step 2): one row per finding.

@@ -37,9 +37,10 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 ## Step 3. The losses regression
 
 - **What it predicts:** the normal gap on a phase, meaning transformer energy − sum of its meters (energy lost in the cables).
-- **Formula:** expected losses = *a* + *b* × (transformer phase energy)².
+- **Formula:** expected losses = *a* + *b* × (transformer phase energy)², fitted as a linear regression on the energy squared. When the transformer sent no energy, the expected losses are 0 (no energy sent, nothing lost); an empty or negative transformer reading is broken and has no expected losses.
 - **Fitted on 2018,** separately for each phase, because each phase carries different loads (2018 average losses: 0.76% on A, 0.59% on B, 0.52% on C).
-- **Check:** *b* must come out positive.
+- **Only on clean hours:** the transformer measured energy, every home on the phase sent its kWh, and no rule finding touches that phase at that hour (a home's or the transformer's finding touches its phase; a street finding touches all three). One broken reading can outweigh weeks of real losses, and a least-squares line is pulled hardest by the biggest errors.
+- **Check:** *b* must come out positive, and every phase needs at least one usable hour.
 
 *Why:* losses are the only part of the energy balance that isn't measured. They grow with the square of the load, so a fixed allowance can't fit both quiet and busy hours.
 
@@ -180,7 +181,7 @@ Every hour, the operator app sends the new hour's readings plus a memory: the pa
 
 | Phase | Data | What you do |
 |---|---|---|
-| **Learning** (2018) | readings, transformer, wiring, context | fit the losses regression on the whole year; replay 2018 hour by hour through the same functions as live (rules, columns, trust) to build the forest's rows; train the forest, set the starting T, freeze |
+| **Learning** (2018) | readings, transformer, wiring, context | run the rules over the year, then fit the losses regression on the clean hours; replay 2018 hour by hour through the same functions as live (rules, columns, trust) to build the forest's rows; train the forest, set the starting T, freeze |
 | **Practice** (odd months of 2019) | the same, plus the practice answers | run the hourly loop as if live; compare incidents with the answers; tune T, the candidate rule and the incident closing, **one change at a time**; fill the confidence table; freeze |
 | **Final test** (even months of 2019) | the same, plus the test answers | run **once**, then report |
 
