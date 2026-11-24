@@ -9,7 +9,7 @@ Status: agreed design, 12 November 2026; revised 23 November 2026 (five columns,
 ## Step 1. Prepare the data
 
 - **Join the sources:** attach each meter reading to its home's phase and cable (wiring) and to the hour's day type (context): weekday, or weekend-or-holiday (see step 4).
-- **Build a phase table, one row per phase per hour:** transformer energy on the phase, the sum of its meters' kWh, and how many meters reported.
+- **Build a phase table, one row per phase per hour:** transformer energy on the phase, the sum of its meters' kWh, how many meters reported, and the hour's type of day (so the grid voltage's usual compares the same kind of day).
 - **Check once:** the units (kWh, volts), and that the transformer lines up with the sum of the meters in the **same** hour, not shifted by one.
 
 *Why:* everything else depends on these joins. A one-hour shift would make every hour look like missing energy.

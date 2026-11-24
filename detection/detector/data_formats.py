@@ -37,12 +37,13 @@ HOME_HOURS_COLUMNS = [
 ]
 
 # Phase table: one row per phase and hour.
+#   day_type                                 the hour's type of day (the same for every phase)
 #   transformer_kwh, transformer_voltage_v   what the transformer measured on this phase
 #   homes_kwh                                sum of the kWh reported by this phase's homes
 #   nb_homes_reporting                       number of this phase's homes that sent a reading
 #   nb_homes_on_phase                        number of homes on this phase
 PHASE_HOURS_COLUMNS = [
-    "timestamp", "phase", "transformer_kwh", "transformer_voltage_v",
+    "timestamp", "phase", "day_type", "transformer_kwh", "transformer_voltage_v",
     "homes_kwh", "nb_homes_reporting", "nb_homes_on_phase",
 ]
 
@@ -51,6 +52,16 @@ PHASE_HOURS_COLUMNS = [
 # row's trust state, decided when its hour was checked (trusted, untrusted or unchecked: names in settings.py).
 HOME_MEMORY_COLUMNS = [*HOME_HOURS_COLUMNS, "trust"]  # the home table's columns, then "trust"
 PHASE_MEMORY_COLUMNS = [*PHASE_HOURS_COLUMNS, "trust"]  # the phase table's columns, then "trust"
+
+# Last usuals: for each home (or phase), hour of day and type of day, the last usual that could be computed. It's
+# the fallback when fewer than 3 trusted values remain (the memory only keeps about 28 days). Empty at the start;
+# a new usual overwrites the old value, so it holds at most one value per home (or phase), hour and type of day.
+#   usual_of        which usual: consumption (a home's kWh) or grid_voltage (a phase's transformer voltage)
+#   home_or_phase   the home id (e.g. H07), or the phase (A, B or C) for the grid voltage
+#   hour_of_day     0 to 23
+#   day_type        weekday or weekend_or_holiday
+#   usual           the last usual computed
+LAST_USUALS_COLUMNS = ["usual_of", "home_or_phase", "hour_of_day", "day_type", "usual"]
 
 # ----------------------------------------------------------------------------- learned once, at learning
 # Losses fit (plan step 3): one row per phase, kept in the trained model and used every hour.

@@ -12,6 +12,16 @@ PHASES = ("A", "B", "C")
 # Holidays join weekends: 4 weeks rarely hold more than one or two holidays, too few for a median of their own.
 DAY_TYPES = ("weekday", "weekend_or_holiday")
 
+# ----------------------------------------------------------------------------- the usual (plan step 4)
+# The usual is the median of the same hour, on the same type of day, over this many calendar days before the new
+# hour, using trusted rows only. Calendar days keep the comparison in the current season.
+USUAL_WINDOW_DAYS = 28
+# With fewer trusted values than this, there's no median: the last usual remembered is used instead.
+USUAL_MIN_VALUES = 3
+# The usuals' names in the last usuals table (column usual_of, see data_formats.py).
+USUAL_OF_CONSUMPTION = "consumption"  # a home's kWh
+USUAL_OF_GRID_VOLTAGE = "grid_voltage"  # a phase's transformer voltage
+
 # ----------------------------------------------------------------------------- definition rules (plan step 2)
 # Stuck meter: the whole reading (kWh, V and I) identical this many hours in a row.
 # Honest meters repeat their whole reading at most 3 hours in a row (dataset checks, 2018).

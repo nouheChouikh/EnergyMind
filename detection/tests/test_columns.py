@@ -1,7 +1,7 @@
 """Tests for detector/columns/: the pieces the forest's columns are built from (plan steps 3 and 4).
 
 What it does: checks each module of detector/columns/ on small made-up tables where the right answer is known in
-advance. One section per module, in the order they're built: the losses regression and trust now; the usual and the
+advance. One section per module, in the order they're built: the losses regression, trust and the usual now; the
 five forest columns join later.
 
 Why it exists: the columns feed the forest, and the forest never complains about wrong inputs: it would quietly
@@ -11,7 +11,8 @@ Choices:
   - The helpers at the top are shared by every section. Each section's own helpers sit under its own banner and
     are named after what they build, so sections never get mixed up.
   - Test names start with the function they test (test_losses_fit_..., test_usable_hours_...,
-    test_expected_losses_..., test_untrusted_by_rules_...), so the test report reads function by function.
+    test_expected_losses_..., test_untrusted_by_rules_..., test_consumption_usuals_...), so the test report reads
+    function by function.
   - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched, home_is_untrusted);
     a set of names or a table of rows is named after what's in it (untrusted_homes, usable).
   - The losses tests build their tables from a known a and b per phase: the losses then follow a + b x E² exactly,
@@ -31,22 +32,33 @@ from detector.columns.losses_regression import (  # the code being tested
     usable_hours,
 )
 from detector.columns.trust import is_home_untrusted_by_rules, is_phase_untrusted_by_rules  # the code being tested
-from detector.data_formats import LOSSES_FIT_COLUMNS, PHASE_HOURS_COLUMNS, RULE_FINDINGS_COLUMNS  # tables' columns
+from detector.columns.usual import consumption_usuals, grid_voltage_usuals  # the code being tested
+from detector.data_formats import (  # the tables' columns
+    HOME_HOURS_COLUMNS,
+    HOME_MEMORY_COLUMNS,
+    LAST_USUALS_COLUMNS,
+    LOSSES_FIT_COLUMNS,
+    PHASE_HOURS_COLUMNS,
+    PHASE_MEMORY_COLUMNS,
+    RULE_FINDINGS_COLUMNS,
+)
 from detector.preparation.tables import build_phase_hours  # builds the phase table from the made-up street
 
 
 # =============================================================================
 # SHARED HELPERS: used by every section
 # =============================================================================
-def phase_row(hour, phase, energy, homes_kwh, nb_homes_reporting=25, voltage=231.0):
+def phase_row(hour, phase, energy, homes_kwh, nb_homes_reporting=25, voltage=231.0, day_type="weekday"):
     """One row of the phase table: one phase at one hour, on a phase of 25 homes.
 
     energy: what the transformer sent on the phase (kWh). homes_kwh: what the phase's meters reported in total.
     nb_homes_reporting: how many of the 25 homes sent their kWh (25 means all of them: the hour is complete).
+    voltage: the transformer's voltage on the phase. day_type: the hour's type of day.
     """
     return {
         "timestamp": hour,
         "phase": phase,
+        "day_type": day_type,
         "transformer_kwh": energy,
         "transformer_voltage_v": voltage,
         "homes_kwh": homes_kwh,
@@ -410,3 +422,209 @@ def test_untrusted_by_rules_findings_add_up(home_hours, transformer_readings):
     stuck = finding(TRUST_HOUR, settings.SCOPE_HOME, settings.VERDICT_STUCK, phase="B", home_id="H3")
     # Run and check: H3 for its own finding, H5 and H6 for the outage; only phase C's row.
     assert names_untrusted_by_rules(home_hours, transformer_readings, [outage, stuck]) == ({"H3", "H5", "H6"}, {"C"})
+
+
+# =============================================================================
+# USUAL (usual.py): helpers
+# =============================================================================
+# The tests use small hand-written memories: a few past rows, each with a value and a trust state, so every median
+# can be checked by hand. The new hour is Tuesday 15 January 2019 at 18:00, a weekday.
+USUAL_NEW_HOUR = pd.Timestamp(2019, 1, 15, 18)
+
+# H1's five trusted weekday evenings at 18:00 before the new hour, and the kWh it used on each: their median is 0.7.
+H1_EVENINGS = [
+    (pd.Timestamp(2019, 1, 8, 18), 0.5),  # Tuesday
+    (pd.Timestamp(2019, 1, 9, 18), 0.6),  # Wednesday
+    (pd.Timestamp(2019, 1, 10, 18), 0.7),  # Thursday
+    (pd.Timestamp(2019, 1, 11, 18), 0.8),  # Friday
+    (pd.Timestamp(2019, 1, 14, 18), 0.9),  # Monday
+]
+
+
+def home_memory_row(hour, home_id, kwh, trust=settings.TRUST_TRUSTED, day_type="weekday"):
+    """One past row of the home memory. Only the hour, the home, the type of day, the kWh and the trust matter
+    for the usual; the other columns hold ordinary values."""
+    return {
+        "timestamp": hour,
+        "home_id": home_id,
+        "phase": "A",
+        "cable": 1,
+        "contracted_kw": 3.3,
+        "day_type": day_type,
+        "kwh": kwh,
+        "voltage_v": 230.0,
+        "current_a": 1.0,
+        "estimated": 0,
+        "trust": trust,
+    }
+
+
+def h1_evening_rows():
+    """H1_EVENINGS as past rows of the home memory, all trusted."""
+    rows = []
+    for hour, kwh in H1_EVENINGS:
+        rows.append(home_memory_row(hour, "H1", kwh))
+    return rows
+
+
+def home_memory(rows):
+    """The home memory holding these past rows (made by home_memory_row)."""
+    return pd.DataFrame(rows, columns=HOME_MEMORY_COLUMNS)
+
+
+def new_hour_home_rows(home_ids):
+    """The new hour's home rows (Tuesday 18:00, a weekday), one per home, in the order given."""
+    rows = []
+    for home_id in home_ids:
+        rows.append(home_memory_row(USUAL_NEW_HOUR, home_id, kwh=0.65))
+    # The home table's columns have no trust (the new hour is what's being checked), so it's left out here.
+    return pd.DataFrame(rows, columns=HOME_HOURS_COLUMNS)
+
+
+def phase_memory_row(hour, phase, voltage, trust=settings.TRUST_TRUSTED):
+    """One past row of the phase memory: a weekday phase row (made by phase_row) plus its trust state."""
+    row = phase_row(hour, phase, energy=10.0, homes_kwh=9.9, voltage=voltage)
+    row["trust"] = trust
+    return row
+
+
+def last_usual_row(home_or_phase, usual, hour_of_day=18, usual_of=settings.USUAL_OF_CONSUMPTION):
+    """One remembered usual, for weekdays at hour_of_day (18:00 unless told otherwise)."""
+    return {
+        "usual_of": usual_of,
+        "home_or_phase": home_or_phase,
+        "hour_of_day": hour_of_day,
+        "day_type": "weekday",
+        "usual": usual,
+    }
+
+
+def last_usuals_table(rows):
+    """The last usuals table holding these remembered usuals; last_usuals_table([]) means none yet (the start)."""
+    return pd.DataFrame(rows, columns=LAST_USUALS_COLUMNS)
+
+
+def remembered_usuals(last_usuals, home_or_phase, hour_of_day=18, usual_of=settings.USUAL_OF_CONSUMPTION):
+    """The values the last usuals table remembers for this home (or phase), for weekdays at hour_of_day, as a list.
+
+    A list rather than one value, so a test can check there's exactly one (a new value replaces, never adds).
+    """
+    is_this_slot = (
+        (last_usuals["usual_of"] == usual_of)
+        & (last_usuals["home_or_phase"] == home_or_phase)
+        & (last_usuals["hour_of_day"] == hour_of_day)
+        & (last_usuals["day_type"] == "weekday")
+    )
+    return list(last_usuals.loc[is_this_slot, "usual"])
+
+
+# =============================================================================
+# USUAL (usual.py): each home's usual consumption
+# =============================================================================
+# ----------------------------------------------------------------------------- the median
+def test_consumption_usuals_are_the_median_of_trusted_values():
+    """With at least 3 trusted values at the same hour, on the same type of day, the usual is their median."""
+    # Prepare: H1's five trusted weekday evenings (0.5 to 0.9 kWh), and nothing remembered yet.
+    memory = home_memory(h1_evening_rows())
+    # Run: H1's usual at Tuesday 18:00.
+    usuals, _updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals_table([]))
+    # Check: the median of 0.5, 0.6, 0.7, 0.8 and 0.9 is 0.7.
+    assert list(usuals) == pytest.approx([0.7])
+
+
+# ----------------------------------------------------------------------------- rows that don't count
+# Each case adds one past row that must be left out, holding a wild 50 kWh. If the code counted it, the median of
+# the six values would be 0.75 instead of 0.7; so finding 0.7 again proves the row was left out.
+@pytest.mark.parametrize(
+    "left_out_row",
+    [
+        home_memory_row(pd.Timestamp(2019, 1, 7, 18), "H1", 50.0, trust=settings.TRUST_UNTRUSTED),  # a Monday
+        home_memory_row(pd.Timestamp(2019, 1, 7, 18), "H1", 50.0, trust=settings.TRUST_UNCHECKED),  # a Monday
+        home_memory_row(pd.Timestamp(2019, 1, 14, 17), "H1", 50.0),  # Monday at 17:00, not 18:00
+        home_memory_row(pd.Timestamp(2019, 1, 12, 18), "H1", 50.0, day_type="weekend_or_holiday"),  # a Saturday
+        home_memory_row(pd.Timestamp(2018, 12, 17, 18), "H1", 50.0),  # 29 days before the new hour
+    ],
+    ids=["untrusted", "unchecked", "another hour", "the other type of day", "older than 28 days"],
+)
+def test_consumption_usuals_leave_out_rows_that_dont_count(left_out_row):
+    """Only trusted rows, at the same hour, on the same type of day, within the last 28 days feed the usual."""
+    # Prepare: H1's five trusted evenings, plus the row that must be left out.
+    memory = home_memory(h1_evening_rows() + [left_out_row])
+    # Run.
+    usuals, _updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals_table([]))
+    # Check: still 0.7.
+    assert list(usuals) == pytest.approx([0.7])
+
+
+# ----------------------------------------------------------------------------- too few trusted values
+def test_consumption_usuals_fall_back_on_the_remembered_usual():
+    """With fewer than 3 trusted values (e.g. during a long theft), the usual is the one remembered for that hour."""
+    # Prepare: only the first two of H1's evenings, and 0.55 remembered for weekdays at 18:00.
+    memory = home_memory(h1_evening_rows()[:2])
+    last_usuals = last_usuals_table([last_usual_row("H1", 0.55)])
+    # Run.
+    usuals, _updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals)
+    # Check: 0.55, the remembered usual.
+    assert list(usuals) == pytest.approx([0.55])
+
+
+def test_consumption_usuals_are_empty_when_none_was_ever_computed():
+    """With fewer than 3 trusted values and nothing remembered (the first weeks), there's no usual yet: empty."""
+    # Prepare: only the first two of H1's evenings, and nothing remembered.
+    memory = home_memory(h1_evening_rows()[:2])
+    # Run.
+    usuals, _updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals_table([]))
+    # Check: empty.
+    assert usuals.isna().all()
+
+
+# ----------------------------------------------------------------------------- remembering
+def test_consumption_usuals_remember_each_new_median():
+    """A new median overwrites the remembered value for the same home, hour and type of day; other values stay."""
+    # Prepare: H1's five evenings; H1 had 0.55 remembered for weekdays at 18:00, and 0.40 for weekdays at 17:00.
+    memory = home_memory(h1_evening_rows())
+    last_usuals = last_usuals_table([last_usual_row("H1", 0.55), last_usual_row("H1", 0.40, hour_of_day=17)])
+    # Run.
+    _usuals, updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals)
+    # Check: 18:00 now remembers the new median 0.7 (one value, not two); 17:00 still remembers 0.40.
+    assert remembered_usuals(updated_last_usuals, "H1", hour_of_day=18) == pytest.approx([0.7])
+    assert remembered_usuals(updated_last_usuals, "H1", hour_of_day=17) == pytest.approx([0.40])
+
+
+# ----------------------------------------------------------------------------- several homes
+def test_consumption_usuals_follow_the_new_hours_rows():
+    """Each home gets its own usual, in the order of the new hour's rows."""
+    # Prepare: H1's five evenings (median 0.7), and H2's three evenings 0.2, 0.3 and 0.4 (median 0.3).
+    rows = h1_evening_rows()
+    rows.append(home_memory_row(pd.Timestamp(2019, 1, 9, 18), "H2", 0.2))
+    rows.append(home_memory_row(pd.Timestamp(2019, 1, 10, 18), "H2", 0.3))
+    rows.append(home_memory_row(pd.Timestamp(2019, 1, 11, 18), "H2", 0.4))
+    # Run: the new hour lists H2 first, then H1.
+    new_hour_home = new_hour_home_rows(["H2", "H1"])
+    usuals, _updated_last_usuals = consumption_usuals(new_hour_home, home_memory(rows), last_usuals_table([]))
+    # Check: H2's usual first, then H1's.
+    assert list(usuals) == pytest.approx([0.3, 0.7])
+
+
+# =============================================================================
+# USUAL (usual.py): each phase's usual grid voltage
+# =============================================================================
+def test_grid_voltage_usuals_are_each_phases_median():
+    """The grid voltage's usual works the same way: per phase, on the transformer's voltage."""
+    # Prepare: three trusted weekday evenings for phases A and B, each phase with its own voltages.
+    rows = []
+    for day, voltage_on_a, voltage_on_b in [(9, 231.0, 229.0), (10, 232.0, 230.0), (11, 233.0, 231.0)]:
+        evening = pd.Timestamp(2019, 1, day, 18)
+        rows.append(phase_memory_row(evening, "A", voltage_on_a))
+        rows.append(phase_memory_row(evening, "B", voltage_on_b))
+    phase_memory = pd.DataFrame(rows, columns=PHASE_MEMORY_COLUMNS)
+    new_hour_phase = pd.DataFrame(
+        [phase_row(USUAL_NEW_HOUR, "A", 10.0, 9.9), phase_row(USUAL_NEW_HOUR, "B", 10.0, 9.9)],
+        columns=PHASE_HOURS_COLUMNS,
+    )
+    # Run.
+    usuals, updated_last_usuals = grid_voltage_usuals(new_hour_phase, phase_memory, last_usuals_table([]))
+    # Check: A's median is 232.0 and B's is 230.0; A's is remembered under the grid voltage's name.
+    assert list(usuals) == pytest.approx([232.0, 230.0])
+    remembered_on_a = remembered_usuals(updated_last_usuals, "A", usual_of=settings.USUAL_OF_GRID_VOLTAGE)
+    assert remembered_on_a == pytest.approx([232.0])
