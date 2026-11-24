@@ -53,3 +53,12 @@ SCOPE_HOME = "home"
 SCOPE_PHASE = "phase"
 SCOPE_STREET = "street"
 SCOPE_TRANSFORMER = "transformer"
+
+# ----------------------------------------------------------------------------- trust states (plan step 4)
+# Every home row and phase row in the memory carries one of these. Only trusted rows feed "usual".
+#   trusted:    checked and found normal, a real change in use, or an estimated reading (the utility's own value)
+#   untrusted:  a rule caught it, a street finding covers it, or it was diagnosed as a fault or "unknown"
+#   unchecked:  one of its columns couldn't be computed, so nobody knows whether it's normal
+TRUST_TRUSTED = "trusted"
+TRUST_UNTRUSTED = "untrusted"
+TRUST_UNCHECKED = "unchecked"

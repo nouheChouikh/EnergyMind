@@ -1,4 +1,4 @@
-"""What goes in (readings), what learning keeps (the losses fit) and what comes out (findings, later incidents).
+"""What goes in (readings, the memory), what learning keeps (the losses fit), what comes out (findings, incidents).
 
 Each list names the columns the detector needs from a table, in order. The files a utility sends
 (here, the dataset's system_inputs files) may hold more columns: the detector ignores them.
@@ -45,6 +45,12 @@ PHASE_HOURS_COLUMNS = [
     "timestamp", "phase", "transformer_kwh", "transformer_voltage_v",
     "homes_kwh", "nb_homes_reporting", "nb_homes_on_phase",
 ]
+
+# ----------------------------------------------------------------------------- the memory the app sends each hour (plan step 9)
+# Past home rows and past phase rows (about the last 28 days): the same columns as the two tables above, plus each
+# row's trust state, decided when its hour was checked (trusted, untrusted or unchecked: names in settings.py).
+HOME_MEMORY_COLUMNS = [*HOME_HOURS_COLUMNS, "trust"]  # the home table's columns, then "trust"
+PHASE_MEMORY_COLUMNS = [*PHASE_HOURS_COLUMNS, "trust"]  # the phase table's columns, then "trust"
 
 # ----------------------------------------------------------------------------- learned once, at learning
 # Losses fit (plan step 3): one row per phase, kept in the trained model and used every hour.

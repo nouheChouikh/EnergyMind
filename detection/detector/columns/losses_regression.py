@@ -22,6 +22,7 @@ Choices:
     (the transformer rule catches it), so it has no expected losses: the answer is empty.
 """
 
+import numpy as np  # np.select: picks one answer per row from a list of cases; np.nan: an empty value
 import pandas as pd  # tables
 from sklearn.linear_model import LinearRegression  # draws the best straight line through points (least squares)
 
@@ -40,10 +41,10 @@ def fit_losses_regression(phase_hours, rule_findings):
     Returns a table with the columns of LOSSES_FIT_COLUMNS: one row per phase, A then B then C.
     Raises ValueError, naming the phase, if a phase has no usable hour or its b isn't positive.
     """
-    usable = usable_hours(phase_hours, rule_findings)
-    rows = []  # one row (a dictionary) per phase, turned into a table at the end
+    usable = usable_hours(phase_hours, rule_findings)  # the rows the fit may learn from
+    fit_rows = []  # one row (a dictionary) per phase, turned into a table at the end
     for phase in settings.PHASES:
-        one_phase = usable[usable["phase"] == phase]
+        one_phase = usable[usable["phase"] == phase]  # this phase's usable rows
         if one_phase.empty:
             raise ValueError(
                 f"phase {phase} has no usable hour to fit its losses (no complete hour that no rule caught): "
@@ -51,14 +52,16 @@ def fit_losses_regression(phase_hours, rule_findings):
             )
         energy = one_phase["transformer_kwh"]  # E: what the transformer sent on this phase, each hour
         losses = energy - one_phase["homes_kwh"]  # what the meters didn't receive: lost in the cables
-        # The straight line against E², the regression's only input column: losses = a + b x E².
-        line = LinearRegression().fit((energy**2).to_frame("energy_squared"), losses)
-        a = float(line.intercept_)  # the line's height where E² = 0: the fixed part
+        # scikit-learn wants its input as a table, one column per input: here a single column, E².
+        energy_squared = (energy**2).to_frame()
+        # The straight line through the points (E², losses): losses = a + b x E².
+        line = LinearRegression().fit(energy_squared, losses)
+        a = float(line.intercept_)  # where the line starts (at E² = 0): the fixed part
         b = float(line.coef_[0])  # the line's slope: how fast the losses grow with E²
         if b <= 0:
             raise ValueError(f"phase {phase}: its losses don't grow with the load (b = {b:.3g}), which isn't physical")
-        rows.append({"phase": phase, "a": a, "b": b})
-    return pd.DataFrame(rows, columns=LOSSES_FIT_COLUMNS)
+        fit_rows.append({"phase": phase, "a": a, "b": b})
+    return pd.DataFrame(fit_rows, columns=LOSSES_FIT_COLUMNS)
 
 
 # =============================================================================
@@ -67,49 +70,41 @@ def fit_losses_regression(phase_hours, rule_findings):
 def usable_hours(phase_hours, rule_findings):
     """The phase table's rows the fit may learn from: complete hours that no rule finding touches."""
     # Complete: the transformer measured energy, and every home on the phase sent its kWh.
-    energy_measured = phase_hours["transformer_kwh"] > 0  # an empty value fails "> 0" too
-    all_homes_sent = phase_hours["nb_homes_reporting"] == phase_hours["nb_homes_on_phase"]
-    # Untouched: no rule finding concerns this phase at this hour.
-    touched = touched_phase_hours(rule_findings)
-    is_touched = pd.Series(
-        [(hour, phase) in touched for hour, phase in zip(phase_hours["timestamp"], phase_hours["phase"])],
-        index=phase_hours.index,
-    )
-    return phase_hours[energy_measured & all_homes_sent & ~is_touched]
+    is_energy_measured = phase_hours["transformer_kwh"] > 0  # an empty value fails "> 0" too
+    has_every_home_reported = phase_hours["nb_homes_reporting"] == phase_hours["nb_homes_on_phase"]
+    is_complete = is_energy_measured & has_every_home_reported
 
+    # Touched: go through the findings one at a time, and mark the rows each one concerns.
+    is_touched = pd.Series(False, index=phase_hours.index)  # nothing marked yet
+    for finding in rule_findings.itertuples():  # one finding at a time: finding.timestamp, finding.phase...
+        is_same_hour = phase_hours["timestamp"] == finding.timestamp
+        if pd.isna(finding.phase):
+            # A street finding has no phase: it concerns all three phases at its hour.
+            is_touched = is_touched | is_same_hour
+        else:
+            # A home's, the transformer's or an outage's finding concerns only its own phase.
+            is_touched = is_touched | (is_same_hour & (phase_hours["phase"] == finding.phase))
 
-def touched_phase_hours(rule_findings):
-    """Every (hour, phase) pair a rule finding touches, as a set.
-
-    A finding with a phase touches that phase: a home's finding carries the home's phase, a transformer finding the
-    broken phase, an outage the phase that's out. A street finding has no phase: it touches all three phases.
-    """
-    has_phase = rule_findings["phase"].notna()
-    touched = set(zip(rule_findings.loc[has_phase, "timestamp"], rule_findings.loc[has_phase, "phase"]))
-    for hour in rule_findings.loc[~has_phase, "timestamp"]:  # the street findings' hours
-        touched |= {(hour, phase) for phase in settings.PHASES}
-    return touched
+    return phase_hours[is_complete & ~is_touched]  # "~" means "not": complete and not touched
 
 
 # =============================================================================
 # EXPECTED LOSSES (live, every hour)
 # =============================================================================
 def expected_losses(new_hour_phase, losses_fit):
-    """Each phase's expected cable losses at the new hour, in kWh.
+    """Each phase's expected cable losses at the new hour, in kWh: one value per row of new_hour_phase, in order.
 
     new_hour_phase: the phase table's rows for the hour being checked (one row per phase).
     losses_fit: the fit's table (one row per phase: phase, a, b), as learning returned it.
-    Returns one value per row of new_hour_phase, in the same order:
-      - a + b x E² when the transformer sent energy (E above 0);
-      - 0 when E is 0: no energy sent, nothing lost;
-      - empty when E is empty or negative: a broken reading has no expected losses.
     """
-    energy = new_hour_phase["transformer_kwh"]
-    # Each row's own a and b, looked up by its phase.
-    fit_by_phase = losses_fit.set_index("phase")
+    energy = new_hour_phase["transformer_kwh"]  # E, for each phase row
+    # Each row's own a and b, looked up in the fit by the row's phase.
+    fit_by_phase = losses_fit.set_index("phase")  # the fit, findable by phase
     a = new_hour_phase["phase"].map(fit_by_phase["a"])
     b = new_hour_phase["phase"].map(fit_by_phase["b"])
-    # The formula where energy was sent; empty everywhere else (E of 0, empty or negative).
-    losses = (a + b * energy**2).where(energy > 0)
-    # No energy sent, nothing lost: 0, not the fit's fixed part a.
-    return losses.mask(energy == 0, 0.0)
+    # One answer per row, by case:
+    #   energy sent (E above 0)   ->  the formula, a + b x E²
+    #   no energy sent (E is 0)   ->  0: nothing was lost
+    #   empty or negative E       ->  empty: a broken reading has no expected losses
+    answers = np.select([energy > 0, energy == 0], [a + b * energy**2, 0.0], default=np.nan)
+    return pd.Series(answers, index=new_hour_phase.index)
