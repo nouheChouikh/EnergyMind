@@ -7,7 +7,7 @@ What it does: for the new hour, gives each home's usual consumption and each pha
   - otherwise (none ever computed, e.g. the first days of the data), empty.
 Every new median is also remembered: it overwrites the old value in the last usuals table.
 
-Why it exists: three of the five columns compare the new hour with "usual". Only trusted rows feed it, so problems
+Why it exists: three of the five features compare the new hour with "usual". Only trusted rows feed it, so problems
 don't distort it; the remembered usual keeps a home scored during a long theft, when too few trusted values remain.
 
 Choices:

@@ -28,9 +28,10 @@ detection/
 │   ├── trained_model.py            what learning produced, plus what is stored with it; save and load
 │   ├── learning.py                 learn(): normal history → trained model
 │   ├── hourly_check.py             start_memory() and check_hour(): one hour → results
+│   ├── trust.py                    which home and phase rows may feed "usual"
 │   ├── preparation/                tables.py, input_checks.py
 │   ├── rules/                      meter_rules.py, street_rules.py, findings.py (all rules, in order)
-│   ├── columns/                    losses_regression.py, trust.py, usual.py, forest_columns.py
+│   ├── features/                   losses_regression.py, usual.py, forest_table.py (the five features)
 │   ├── forest/                     forest_training.py, forest_scoring.py
 │   ├── diagnosis/                  shap_reasons.py, verdict_patterns.py, home_naming.py
 │   ├── incidents/                  incident_tracking.py, confidence.py, explanation_cards.py
@@ -43,8 +44,8 @@ detection/
 │                                   threshold_baseline, report_writing
 ├── outputs/                        generated: saved_model/, practice_results/, final_test_results/
 └── tests/                          conftest.py (shared test data), test_boundaries.py, and one test file
-                                    per part: preparation, rules, columns, forest, diagnosis, incidents,
-                                    feedback, hourly_check, answer_matching
+                                    per part: preparation, rules, features, trust, forest, diagnosis,
+                                    incidents, feedback, hourly_check, answer_matching
 ```
 
 ## Where each plan step lives
@@ -53,8 +54,8 @@ detection/
 |---|---|
 | 1. Prepare the data | `detector/preparation/` |
 | 2. Rules for definitions | `detector/rules/` |
-| 3. The losses regression | `detector/columns/losses_regression.py` |
-| 4. The five columns | `detector/columns/` |
+| 3. The losses regression | `detector/features/losses_regression.py` |
+| 4. The five features | `detector/features/`; the trust rule in `detector/trust.py` |
 | 5. Train the Isolation Forest | `detector/forest/` |
 | 6. Explain and diagnose each flag | `detector/diagnosis/` |
 | 7. Incidents, scores, explanation card | `detector/incidents/` |
@@ -98,7 +99,7 @@ Two words, used the same way everywhere: a **step** is one of the 11 steps of `d
 | Part | What is built | Plan steps | Where | Status |
 |---|---|---|---|---|
 | 1 | preparation and rules | 1, 2 | `detector/preparation/`, `detector/rules/` | **built** |
-| 2 | losses, trust, usual, the five columns | 3, 4 | `detector/columns/` | in progress |
+| 2 | losses, trust, usual, the five features | 3, 4 | `detector/features/`, `detector/trust.py` | in progress |
 | 3 | the forest | 5 | `detector/forest/` | |
 | 4 | learning and the first saved model | 10 (learning) | `detector/learning.py`, `detector/trained_model.py`, `evaluation/run_learning.py` | |
 | 5 | diagnosis | 6 | `detector/diagnosis/` | |
