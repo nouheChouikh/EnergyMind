@@ -122,7 +122,7 @@ def test_phase_table_adds_up_each_phase(meter_readings, street_wiring, hourly_co
 
 
 def test_phase_table_carries_each_hours_day_type(meter_readings, street_wiring, hourly_context, transformer_readings):
-    """Each phase row carries its hour's type of day, so the grid voltage's usual compares the same kind of day."""
+    """Each phase row carries its hour's type of day: the transformer voltage's usual compares the same kind of day."""
     # Run.
     homes = build_home_hours(meter_readings, street_wiring, hourly_context)
     phases = build_phase_hours(homes, transformer_readings)

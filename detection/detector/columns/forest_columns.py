@@ -9,8 +9,8 @@ columns can't be written; the forest scores the whole row at once.
 """
 
 # To be built, one value per home and hour:
-#   consumption_vs_usual      is this home using more or less than usual?            (holiday, new AC, theft)
-#   voltage_vs_neighbours     is this meter's voltage out of line with its neighbours? (a meter's voltage sensor)
-#   phase_unexplained_energy  does the phase's energy add up, after cable losses?    (theft vs holiday)
-#   grid_voltage_vs_usual     is the grid's voltage itself off?                      (sag or surge: grid, not house)
-#   hour                      what time is it?                                       (night and day differ)
+#   consumption_vs_usual                  is this home using more or less than usual? (holiday, new AC, theft)
+#   voltage_gap_with_neighbours_vs_usual  is this meter's voltage out of line with its neighbours? (sensor drift)
+#   phase_unexplained_energy              does the phase's energy add up, after cable losses? (theft vs holiday)
+#   transformer_voltage_vs_usual          is the transformer's voltage off? (sag or surge: grid, not house)
+#   hour                                  what time is it? (night and day differ)

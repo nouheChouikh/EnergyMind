@@ -1,6 +1,6 @@
-"""The usual: what a home's consumption, or a phase's grid voltage, normally is at this hour (plan step 4).
+"""The usual: what a home's consumption, or a phase's transformer voltage, normally is at this hour (plan step 4).
 
-What it does: for the new hour, gives each home's usual consumption and each phase's usual grid voltage:
+What it does: for the new hour, gives each home's usual consumption and each phase's usual transformer voltage:
   - normally, the median of the same hour, on the same type of day, over the last 28 calendar days, using the
     memory's trusted rows only, when there are at least 3 of them;
   - otherwise, the last usual remembered for that hour and type of day (the last usuals table);
@@ -18,8 +18,8 @@ Choices:
     weekend day) at that hour; before that it has none and is unchecked.
   - Built for live use: the usual comes only from the memory's past rows; the new hour is what gets compared.
   - The last usuals live in their own table because the memory only keeps about 28 days.
-  - One shared function does the work for every usual; step 5's third usual (the voltage difference with the
-    neighbours) will use it too.
+  - One shared function does the work for every usual; the third one, each home's usual voltage gap with its
+    neighbours (for voltage_gap_with_neighbours_vs_usual), will use it too.
 """
 
 import pandas as pd  # tables
@@ -49,7 +49,7 @@ def consumption_usuals(new_hour_home, home_memory, last_usuals):
     )
 
 
-def grid_voltage_usuals(new_hour_phase, phase_memory, last_usuals):
+def transformer_voltage_usuals(new_hour_phase, phase_memory, last_usuals):
     """Each phase's usual transformer voltage at the new hour, and the last usuals updated.
 
     new_hour_phase: the phase table's rows for the hour being checked (one row per phase).
@@ -64,7 +64,7 @@ def grid_voltage_usuals(new_hour_phase, phase_memory, last_usuals):
         home_or_phase_column="phase",
         value_column="transformer_voltage_v",
         last_usuals=last_usuals,
-        usual_of=settings.USUAL_OF_GRID_VOLTAGE,
+        usual_of=settings.USUAL_OF_TRANSFORMER_VOLTAGE,
     )
 
 

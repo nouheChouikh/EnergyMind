@@ -9,7 +9,7 @@ Status: agreed design, 12 November 2026; revised 23 November 2026 (five columns,
 ## Step 1. Prepare the data
 
 - **Join the sources:** attach each meter reading to its home's phase and cable (wiring) and to the hour's day type (context): weekday, or weekend-or-holiday (see step 4).
-- **Build a phase table, one row per phase per hour:** transformer energy on the phase, the sum of its meters' kWh, how many meters reported, and the hour's type of day (so the grid voltage's usual compares the same kind of day).
+- **Build a phase table, one row per phase per hour:** transformer energy on the phase, the sum of its meters' kWh, how many meters reported, and the hour's type of day (so the transformer voltage's usual compares the same kind of day).
 - **Check once:** the units (kWh, volts), and that the transformer lines up with the sum of the meters in the **same** hour, not shifted by one.
 
 *Why:* everything else depends on these joins. A one-hour shift would make every hour look like missing energy.
@@ -46,7 +46,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 
 ## Step 4. The five columns
 
-**"Usual"** is used by three columns (`consumption_vs_usual`, `grid_voltage_vs_usual`, and the usual difference inside `voltage_vs_neighbours`) and always means the same thing:
+**"Usual"** is used by three columns, each named after the value it compares with its usual (`<value>_vs_usual`): `consumption_vs_usual`, `voltage_gap_with_neighbours_vs_usual` and `transformer_voltage_vs_usual`. It always means the same thing:
 
 - **Normal case:** the median of the same hour, on the same type of day, over the last 28 calendar days, **using trusted hours only**. It needs at least 3 trusted values. Using calendar days keeps the comparison in the current season.
 - **Two types of day:** weekday, and weekend-or-holiday. Holidays join weekends because 4 weeks rarely contain more than one or two holidays, too few values for a median of their own.
@@ -57,27 +57,27 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 | Column | How it's computed | Question it answers |
 |---|---|---|
 | `consumption_vs_usual` | this hour's kWh ÷ this home's usual kWh for this hour; a usual below a minimum (set in `settings.py`, checked on 2018) counts as that minimum, so a tiny night usual can't make the ratio jump | Is this home using more or less than usual? |
-| `voltage_vs_neighbours` | (home voltage − median voltage of the other homes on its cable and phase) − this home's usual value of that difference | Is this meter's voltage out of line with its neighbours? |
+| `voltage_gap_with_neighbours_vs_usual` | the home's voltage gap with its neighbours (home voltage − median voltage of the other homes on its cable and phase) − this home's usual gap | Is this meter's voltage out of line with its neighbours? |
 | `phase_unexplained_energy` | (transformer phase energy − sum of its meters − expected losses) ÷ transformer phase energy, in % | Is energy missing or appearing on this phase? |
-| `grid_voltage_vs_usual` | transformer phase voltage − its usual for this hour | Is the grid voltage itself off? |
+| `transformer_voltage_vs_usual` | transformer phase voltage − its usual for this hour | Is the voltage arriving at the transformer off (a sag or surge from the grid)? |
 | `hour` | 0–23 | What time is it? |
 
 **These are general senses, not problem detectors.** Each one measures a basic relationship of a healthy street: a home vs its habits, a meter vs its neighbours, the energy balance, the grid. Many problems disturb each one, and the forest decides what's abnormal.
 
 **Why the comparisons work:**
-- **Comparing with neighbours** cancels what the whole cable experiences: the grid voltage, and the load everyone shares.
-- **Subtracting the home's usual difference** cancels its position on the cable. A home far from the transformer is always a bit lower.
+- **Comparing with neighbours** cancels what the whole cable experiences: the voltage arriving at the transformer, and the load everyone shares.
+- **Subtracting the home's usual gap** cancels its position on the cable. A home far from the transformer is always a bit lower.
 - **Dividing the unexplained energy by the phase's energy** keeps the normal range the same at every load, because the transformer meter's error is a percentage of what it measures.
 
 **The trust rule, so anomalies don't distort "usual":**
-- **Two levels.** Each home row has a trust state (it feeds the home's consumption and voltage usuals), and so does each phase row (it feeds the phase's grid voltage usual).
+- **Two levels.** Each home row has a trust state (it feeds the home's consumption usual and its voltage gap's usual), and so does each phase row (it feeds the phase's transformer voltage usual).
 - **Three states.** Only **trusted** rows feed "usual":
   - **trusted:** checked by the forest and found normal, or diagnosed as a real change in use. Estimated readings also count as trusted (the utility's own values, kept for history). During learning there's no forest yet, so a row is trusted if no rule caught it and it can be scored;
   - **untrusted:** a rule caught it, or the system diagnosed it as a fault or "unknown". It stays untrusted for as long as that incident lasts;
   - **unchecked:** the forest couldn't score it (see below). Nobody knows whether it's normal, so it stays out of "usual"; the fallback above covers long gaps.
 - **A grid event untrusts everything it touches; a home problem untrusts only that home.** An outage, a sag or a surge on a phase untrusts the phase row and every home row on that phase: during a sag, the homes' consumption is shaped by the grid, not by the families. A theft or a broken meter untrusts only that home's row.
 - **Hours diagnosed as a real change in use** (holiday, new appliance) **stay trusted**, so "usual" follows real life.
-- **Neighbours** are the other homes on the same cable and phase (7 or 8 on the real street). Those whose reading is untrusted are left out of the neighbours' median; if none is left, `voltage_vs_neighbours` can't be computed.
+- **Neighbours** are the other homes on the same cable and phase (7 or 8 on the real street). Those whose reading is untrusted are left out of the neighbours' median; if none is left, `voltage_gap_with_neighbours_vs_usual` can't be computed.
 - **When one of a home's columns can't be computed, its hour is unchecked:**
   - the home has no usual yet;
   - none of its neighbours is usable;
@@ -113,8 +113,8 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 
 | Main reason | Extra check | Verdict |
 |---|---|---|
-| `grid_voltage_vs_usual` | most homes on the phase flagged in the same hour | `voltage_sag_upstream` / `voltage_surge_upstream` |
-| `voltage_vs_neighbours` | only this home | `meter_voltage_drift` |
+| `transformer_voltage_vs_usual` | most homes on the phase flagged in the same hour | `voltage_sag_upstream` / `voltage_surge_upstream` |
+| `voltage_gap_with_neighbours_vs_usual` | only this home | `meter_voltage_drift` |
 | `phase_unexplained_energy`, energy **missing** | compare the energy missing over the last 24 h with each home's drop below its usual over the same hours | `under_reporting` (home named, or candidates listed), or `energy_missing_unattributed` if no home's drop matches it |
 | `consumption_vs_usual` | `phase_unexplained_energy` barely contributed | `normal_real_change`: logged, **no alert** |
 | anything else | | `unknown`: a person decides |
@@ -144,7 +144,7 @@ There's **no pattern for energy appearing** (meters reporting more than the tran
 >
 > **Diagnosis:** phase B lost 2.1 kWh more than normal over the last 24 h; H073 used 2.0 kWh less than usual; no other home on phase B dropped that much.
 >
-> **Ruled out:** a holiday (energy is missing), a grid event (grid voltage normal).
+> **Ruled out:** a holiday (energy is missing), a grid event (the transformer's voltage is normal).
 >
 > **Decision:** operator.
 
@@ -198,7 +198,7 @@ Every hour, the operator app sends the new hour's readings plus a memory: the pa
 
 ## Step 11. Later improvements (after the MVP works)
 
-1. **24-hour averages** of `phase_unexplained_energy` and `voltage_vs_neighbours`, so small, slow problems show up sooner.
+1. **24-hour averages** of `phase_unexplained_energy` and `voltage_gap_with_neighbours_vs_usual`, so small, slow problems show up sooner.
 2. **Better home naming:** match the shape of the missing energy hour by hour against each home's readings.
 3. **Transformer and network-map checks** when onboarding a new site.
 4. **Safe automation** for verdict types with proven confidence.
