@@ -81,7 +81,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 - **When one of a home's columns can't be computed, its hour is unchecked:**
   - the home has no usual yet;
   - none of its neighbours is usable;
-  - its phase's balance can't be computed: a meter on that phase was caught by a rule (missing, impossible or stuck), so the sum of the phase's meters is wrong;
+  - its phase's balance can't be computed: a meter on that phase was caught by a rule (missing, impossible or stuck), so the sum of the phase's meters is wrong; a meter on that phase sent an estimated reading (the utility's guess, not a measurement); or the transformer measured no energy on that phase (the balance is a percentage of it);
   - the transformer's reading on its own phase is broken.
 
   The other phases are still scored.
@@ -225,7 +225,7 @@ Two rules for this table:
 - Subtle thefts are often reported as a list of candidates, not one named home.
 - A theft hidden behind a brand-new appliance can't be tied to a home: it's reported as energy missing on the phase.
 - A stuck meter is recognised at its 4th identical reading, so the alarm comes 2 hours after it froze (honest meters repeat a reading up to 3 times in a row). Those 2 earlier hours stay as they were judged, and during them the frozen reading still goes into its phase's balance, so the phase can look like it's missing or gaining energy.
-- While a meter's reading is caught by a rule (missing, impossible or stuck), its phase's balance can't be computed, so that phase's homes aren't scored by the forest; the rules still judge them.
+- While a meter's reading is caught by a rule (missing, impossible or stuck) or is estimated, its phase's balance can't be computed, so that phase's homes aren't scored by the forest; the rules still judge them.
 - One home's supply cut, recorded as 0 V while its phase has power, isn't named by a rule: the forest flags it (its voltage is far below its neighbours') and an operator decides (generally, a supply cut wouldn't send anything anyway so it would count as missing)
 - A problem the system misses feeds the usual. The median barely moves until the problem fills half of its values (about 2 weeks); after that, it looks normal to the columns that use a usual. Its hours leave the usual within 4 weeks after it ends. The energy balance uses no usual, so a missed theft still shows as energy missing on the phase.
 - Learning has no forest yet, so it treats the history as mostly normal: a long problem hidden in the history is learned as normal.
