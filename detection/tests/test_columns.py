@@ -13,7 +13,7 @@ Choices:
   - Test names start with the function they test (test_losses_fit_..., test_usable_hours_...,
     test_expected_losses_..., test_untrusted_by_rules_..., test_consumption_usuals_...), so the test report reads
     function by function.
-  - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched, home_is_untrusted);
+  - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched, is_home_untrusted);
     a set of names or a table of rows is named after what's in it (untrusted_homes, usable).
   - The losses tests build their tables from a known a and b per phase: the losses then follow a + b x E² exactly,
     so the fit must find exactly those numbers again.
@@ -32,7 +32,7 @@ from detector.columns.losses_regression import (  # the code being tested
     usable_hours,
 )
 from detector.columns.trust import is_home_untrusted_by_rules, is_phase_untrusted_by_rules  # the code being tested
-from detector.columns.usual import consumption_usuals, grid_voltage_usuals  # the code being tested
+from detector.columns.usual import consumption_usuals, transformer_voltage_usuals  # the code being tested
 from detector.data_formats import (  # the tables' columns
     HOME_HOURS_COLUMNS,
     HOME_MEMORY_COLUMNS,
@@ -341,11 +341,11 @@ def names_untrusted_by_rules(home_hours, transformer_readings, findings):
     new_hour_home, new_hour_phase = street_at_trust_hour(home_hours, transformer_readings)
     rule_findings = findings_table(findings)
     # The code being tested answers True or False for each row.
-    home_is_untrusted = is_home_untrusted_by_rules(new_hour_home, rule_findings)
-    phase_is_untrusted = is_phase_untrusted_by_rules(new_hour_phase, rule_findings)
+    is_home_untrusted = is_home_untrusted_by_rules(new_hour_home, rule_findings)
+    is_phase_untrusted = is_phase_untrusted_by_rules(new_hour_phase, rule_findings)
     # Keep the names of the rows answered True.
-    untrusted_homes = set(new_hour_home.loc[home_is_untrusted, "home_id"])
-    untrusted_phases = set(new_hour_phase.loc[phase_is_untrusted, "phase"])
+    untrusted_homes = set(new_hour_home.loc[is_home_untrusted, "home_id"])
+    untrusted_phases = set(new_hour_phase.loc[is_phase_untrusted, "phase"])
     return untrusted_homes, untrusted_phases
 
 
@@ -359,11 +359,11 @@ def test_untrusted_by_rules_nothing_without_findings(home_hours, transformer_rea
     new_hour_home, new_hour_phase = street_at_trust_hour(home_hours, transformer_readings)
     no_findings = findings_table([])
     # Run: both functions.
-    home_is_untrusted = is_home_untrusted_by_rules(new_hour_home, no_findings)
-    phase_is_untrusted = is_phase_untrusted_by_rules(new_hour_phase, no_findings)
+    is_home_untrusted = is_home_untrusted_by_rules(new_hour_home, no_findings)
+    is_phase_untrusted = is_phase_untrusted_by_rules(new_hour_phase, no_findings)
     # Check: 6 answers for the 6 homes and 3 for the 3 phases, every one False.
-    assert list(home_is_untrusted) == [False] * 6
-    assert list(phase_is_untrusted) == [False] * 3
+    assert list(is_home_untrusted) == [False] * 6
+    assert list(is_phase_untrusted) == [False] * 3
 
 
 # ----------------------------------------------------------------------------- one finding at a time
@@ -607,10 +607,10 @@ def test_consumption_usuals_follow_the_new_hours_rows():
 
 
 # =============================================================================
-# USUAL (usual.py): each phase's usual grid voltage
+# USUAL (usual.py): each phase's usual transformer voltage
 # =============================================================================
-def test_grid_voltage_usuals_are_each_phases_median():
-    """The grid voltage's usual works the same way: per phase, on the transformer's voltage."""
+def test_transformer_voltage_usuals_are_each_phases_median():
+    """The transformer voltage's usual works the same way, with one usual per phase."""
     # Prepare: three trusted weekday evenings for phases A and B, each phase with its own voltages.
     rows = []
     for day, voltage_on_a, voltage_on_b in [(9, 231.0, 229.0), (10, 232.0, 230.0), (11, 233.0, 231.0)]:
@@ -623,8 +623,8 @@ def test_grid_voltage_usuals_are_each_phases_median():
         columns=PHASE_HOURS_COLUMNS,
     )
     # Run.
-    usuals, updated_last_usuals = grid_voltage_usuals(new_hour_phase, phase_memory, last_usuals_table([]))
-    # Check: A's median is 232.0 and B's is 230.0; A's is remembered under the grid voltage's name.
+    usuals, updated_last_usuals = transformer_voltage_usuals(new_hour_phase, phase_memory, last_usuals_table([]))
+    # Check: A's median is 232.0 and B's is 230.0; A's is remembered under the transformer voltage's name.
     assert list(usuals) == pytest.approx([232.0, 230.0])
-    remembered_on_a = remembered_usuals(updated_last_usuals, "A", usual_of=settings.USUAL_OF_GRID_VOLTAGE)
+    remembered_on_a = remembered_usuals(updated_last_usuals, "A", usual_of=settings.USUAL_OF_TRANSFORMER_VOLTAGE)
     assert remembered_on_a == pytest.approx([232.0])

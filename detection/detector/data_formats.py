@@ -56,8 +56,8 @@ PHASE_MEMORY_COLUMNS = [*PHASE_HOURS_COLUMNS, "trust"]  # the phase table's colu
 # Last usuals: for each home (or phase), hour of day and type of day, the last usual that could be computed. It's
 # the fallback when fewer than 3 trusted values remain (the memory only keeps about 28 days). Empty at the start;
 # a new usual overwrites the old value, so it holds at most one value per home (or phase), hour and type of day.
-#   usual_of        which usual: consumption (a home's kWh) or grid_voltage (a phase's transformer voltage)
-#   home_or_phase   the home id (e.g. H07), or the phase (A, B or C) for the grid voltage
+#   usual_of        which usual: consumption (a home's kWh) or transformer_voltage (a phase's voltage)
+#   home_or_phase   the home id (e.g. H07), or the phase (A, B or C) for the transformer voltage
 #   hour_of_day     0 to 23
 #   day_type        weekday or weekend_or_holiday
 #   usual           the last usual computed

@@ -18,9 +18,10 @@ DAY_TYPES = ("weekday", "weekend_or_holiday")
 USUAL_WINDOW_DAYS = 28
 # With fewer trusted values than this, there's no median: the last usual remembered is used instead.
 USUAL_MIN_VALUES = 3
-# The usuals' names in the last usuals table (column usual_of, see data_formats.py).
+# The usuals' names in the last usuals table (column usual_of, see data_formats.py). Each one is also the start of
+# its forest column's name: consumption -> consumption_vs_usual, transformer_voltage -> transformer_voltage_vs_usual.
 USUAL_OF_CONSUMPTION = "consumption"  # a home's kWh
-USUAL_OF_GRID_VOLTAGE = "grid_voltage"  # a phase's transformer voltage
+USUAL_OF_TRANSFORMER_VOLTAGE = "transformer_voltage"  # a phase's voltage, measured by the transformer
 
 # ----------------------------------------------------------------------------- definition rules (plan step 2)
 # Stuck meter: the whole reading (kWh, V and I) identical this many hours in a row.
