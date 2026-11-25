@@ -12,11 +12,13 @@ and it isn't scored by the forest.
 
 Choices:
   - The answers are True or False, like the rules' answers. The rules can only say "untrusted" or "not decided
-    yet": a row they didn't catch is decided later (unchecked if a column can't be computed, trusted if it's an
+    yet": a row they didn't catch is decided later (unchecked if a feature can't be computed, trusted if it's an
     estimated reading, otherwise the forest decides). The trust words are written once everything is known.
   - It reads only the findings table, so no rule logic is repeated here. Homes covered by an outage have no
     finding row of their own, which is why the outage's phase (or the street scope) is read as well.
   - Built for live use: it judges the new hour only, from that hour's findings.
+  - It sits at the top of detector/, not in features/: it isn't something a feature is built from. It decides what
+    the memory keeps, from the rules now, and later from the features, the forest and the diagnosis.
   - Later steps add the rest of the trust decision to this file; operator decisions live in
     feedback/operator_decisions.py.
 """

@@ -5,7 +5,7 @@ import re  # searches text with patterns
 from pathlib import Path  # file paths that work on Windows and Linux
 
 # The 7 folders of detector/, in plan order (steps 1 to 8).
-FOLDERS = ["preparation", "rules", "columns", "forest", "diagnosis", "incidents", "feedback"]
+FOLDERS = ["preparation", "rules", "features", "forest", "diagnosis", "incidents", "feedback"]
 
 # detector/, found from this file's place: tests/ and detector/ sit side by side in detection/.
 DETECTOR_DIR = Path(__file__).resolve().parents[1] / "detector"

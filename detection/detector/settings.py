@@ -19,11 +19,11 @@ USUAL_WINDOW_DAYS = 28
 # With fewer trusted values than this, there's no median: the last usual remembered is used instead.
 USUAL_MIN_VALUES = 3
 # The usuals' names in the last usuals table (column usual_of, see data_formats.py). Each one is also the start of
-# its forest column's name: consumption -> consumption_vs_usual, transformer_voltage -> transformer_voltage_vs_usual.
+# its feature's name: consumption -> consumption_vs_usual, transformer_voltage -> transformer_voltage_vs_usual.
 USUAL_OF_CONSUMPTION = "consumption"  # a home's kWh
 USUAL_OF_TRANSFORMER_VOLTAGE = "transformer_voltage"  # a phase's voltage, measured by the transformer
 
-# ----------------------------------------------------------------------------- the forest's columns (plan step 4)
+# ----------------------------------------------------------------------------- the forest's features (plan step 4)
 # consumption_vs_usual divides this hour's kWh by the home's usual. A usual below this minimum counts as the minimum,
 # so a tiny night usual can't make the ratio jump (0.08 kWh against a usual of 0.01 would read "8 times usual").
 # 0.05 kWh is about what a fridge alone uses in an hour: below it, the home is practically empty. To check on 2018.
@@ -75,7 +75,7 @@ SCOPE_TRANSFORMER = "transformer"
 # Every home row and phase row in the memory carries one of these. Only trusted rows feed "usual".
 #   trusted:    checked and found normal, a real change in use, or an estimated reading (the utility's own value)
 #   untrusted:  a rule caught it, a street finding covers it, or it was diagnosed as a fault or "unknown"
-#   unchecked:  one of its columns couldn't be computed, so nobody knows whether it's normal
+#   unchecked:  one of its features couldn't be computed, so nobody knows whether it's normal
 TRUST_TRUSTED = "trusted"
 TRUST_UNTRUSTED = "untrusted"
 TRUST_UNCHECKED = "unchecked"

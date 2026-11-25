@@ -1,23 +1,23 @@
-"""The five columns for one hour: what the forest looks at for every home (plan step 4).
+"""The forest's five features: what the forest looks at for every home at the new hour (plan step 4).
 
-What it does: turns the new hour's readings into the forest's columns. Three of the five are built so far:
+What it does: turns the new hour's readings into the forest's features. Three of the five are built so far:
   - consumption_vs_usual: each home's kWh ÷ its usual kWh (1.0 = as usual);
   - phase_unexplained_energy: the % of each phase's energy that neither its homes nor the expected cable losses
     explain (0% = everything adds up), only where is_balance_computable says the balance can be trusted;
   - transformer_voltage_vs_usual: each phase's transformer voltage − its usual voltage (0 V = as usual).
-Still to come: voltage_gap_with_neighbours_vs_usual, hour, and the table that puts all five side by side on each
-home's row (a home row gets its own phase's two phase columns).
+Still to come: voltage_gap_with_neighbours_vs_usual, hour, and build_forest_table, which puts all five side by side
+in the forest table, one row per home (a home row gets its own phase's two phase features).
 
-Why a model and not if-else rules: each column alone is ambiguous. A home using less can be a family
-on holiday or a theft; a home's voltage dropping can be the grid or a broken meter. Only the columns
+Why a model and not if-else rules: each feature alone is ambiguous. A home using less can be a family
+on holiday or a theft; a home's voltage dropping can be the grid or a broken meter. Only the features
 together tell them apart (less consumption + energy missing on the phase = suspicious; less consumption
 + energy adding up = normal life). The forest learns from a year of normal hours which combinations are
 normal, including combinations nobody wrote a rule for. An if-else rule for every combination of five
-columns can't be written; the forest scores the whole row at once.
+features can't be written; the forest scores the whole row at once.
 
 Choices:
-  - A column is empty (NaN) when one of its inputs is missing or untrusted by the rules. An empty column makes the
-    row unchecked (not scored), which is honest; a wrong value would look real to the forest.
+  - A feature is empty (NaN) when one of its inputs is missing or untrusted by the rules. An empty feature makes
+    the row unchecked (not scored), which is honest; a wrong value would look real to the forest.
   - Each function gets the new hour's rows plus values already computed elsewhere (the usuals, the expected losses,
     the rules' answers), so each one can be checked on its own with small made-up numbers.
   - Three forms, each suited to its value:
@@ -36,7 +36,7 @@ from detector import settings  # the minimum under the consumption usual
 
 
 # =============================================================================
-# HOME COLUMNS: one value per home row
+# HOME FEATURES: one value per home row
 # =============================================================================
 def consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted):
     """Each home's kWh at the new hour divided by its usual kWh: 1.0 = as usual, 1.5 = 50% more, 0.2 = 80% less.
@@ -59,7 +59,7 @@ def consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted):
 
 
 # =============================================================================
-# PHASE COLUMNS: one value per phase row
+# PHASE FEATURES: one value per phase row
 # =============================================================================
 def is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted):
     """For each phase row: can its energy balance be trusted at the new hour? One yes/no per phase row.
