@@ -1,8 +1,8 @@
-"""Tests for detector/columns/: the pieces the forest's columns are built from (plan steps 3 and 4).
+"""Tests for detector/columns/: the forest's columns and the pieces they're built from (plan steps 3 and 4).
 
 What it does: checks each module of detector/columns/ on small made-up tables where the right answer is known in
-advance. One section per module, in the order they're built: the losses regression, trust and the usual now; the
-five forest columns join later.
+advance. One section per module, in the order they're built: the losses regression, trust, the usual, then the
+forest's columns (three of the five so far).
 
 Why it exists: the columns feed the forest, and the forest never complains about wrong inputs: it would quietly
 learn wrong values as normal. So each piece is proven right on its own before the forest ever learns from it.
@@ -11,8 +11,8 @@ Choices:
   - The helpers at the top are shared by every section. Each section's own helpers sit under its own banner and
     are named after what they build, so sections never get mixed up.
   - Test names start with the function they test (test_losses_fit_..., test_usable_hours_...,
-    test_expected_losses_..., test_untrusted_by_rules_..., test_consumption_usuals_...), so the test report reads
-    function by function.
+    test_expected_losses_..., test_untrusted_by_rules_..., test_consumption_usuals_...,
+    test_consumption_vs_usual_..., test_is_balance_computable_...), so the test report reads function by function.
   - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched, is_home_untrusted);
     a set of names or a table of rows is named after what's in it (untrusted_homes, usable).
   - The losses tests build their tables from a known a and b per phase: the losses then follow a + b x E² exactly,
@@ -26,6 +26,12 @@ import pandas as pd  # tables
 import pytest  # the test tool; @pytest.mark.parametrize runs one test once per case in a list
 
 from detector import settings  # the scope and verdict names a finding is written with
+from detector.columns.forest_columns import (  # the code being tested
+    consumption_vs_usual,
+    is_balance_computable,
+    phase_unexplained_energy,
+    transformer_voltage_vs_usual,
+)
 from detector.columns.losses_regression import (  # the code being tested
     expected_losses,
     fit_losses_regression,
@@ -509,13 +515,13 @@ def remembered_usuals(last_usuals, home_or_phase, hour_of_day=18, usual_of=setti
 
     A list rather than one value, so a test can check there's exactly one (a new value replaces, never adds).
     """
-    is_this_slot = (
+    is_same_usual_home_hour_and_day_type = (
         (last_usuals["usual_of"] == usual_of)
         & (last_usuals["home_or_phase"] == home_or_phase)
         & (last_usuals["hour_of_day"] == hour_of_day)
         & (last_usuals["day_type"] == "weekday")
     )
-    return list(last_usuals.loc[is_this_slot, "usual"])
+    return list(last_usuals.loc[is_same_usual_home_hour_and_day_type, "usual"])
 
 
 # =============================================================================
@@ -628,3 +634,269 @@ def test_transformer_voltage_usuals_are_each_phases_median():
     assert list(usuals) == pytest.approx([232.0, 230.0])
     remembered_on_a = remembered_usuals(updated_last_usuals, "A", usual_of=settings.USUAL_OF_TRANSFORMER_VOLTAGE)
     assert remembered_on_a == pytest.approx([232.0])
+
+
+# =============================================================================
+# FOREST COLUMNS (forest_columns.py): helpers
+# =============================================================================
+# The new hour every forest column test checks: Friday 18 January 2019 at 18:00, a weekday evening.
+# Any hour would do: the three columns built so far only compare the values they're given.
+COLUMNS_HOUR = pd.Timestamp(2019, 1, 18, 18)
+
+
+def home_row_at_columns_hour(home_id, phase, kwh, estimated=0):
+    """One home row of the new hour (COLUMNS_HOUR).
+
+    Only the home, its phase, its kWh and its estimated flag (1 = the utility filled the value in itself) matter for
+    the columns built so far; the other columns hold ordinary values.
+    """
+    return {
+        "timestamp": COLUMNS_HOUR,
+        "home_id": home_id,
+        "phase": phase,
+        "cable": 1,
+        "contracted_kw": 3.3,
+        "day_type": "weekday",
+        "kwh": kwh,
+        "voltage_v": 230.0,
+        "current_a": 1.0,
+        "estimated": estimated,
+    }
+
+
+def home_table(rows):
+    """The new hour's home rows: a table holding these rows (made by home_row_at_columns_hour), in the order given."""
+    return pd.DataFrame(rows, columns=HOME_HOURS_COLUMNS)
+
+
+def phase_table(rows):
+    """The new hour's phase rows: a table holding these rows (made by phase_row), in the order given."""
+    return pd.DataFrame(rows, columns=PHASE_HOURS_COLUMNS)
+
+
+def yes_no(answers):
+    """One yes/no per row, in the rows' order: yes_no([False, True]) is two rows, and only the second says yes.
+
+    Stands in for answers another function would give: the rules' (is_home_untrusted_by_rules,
+    is_phase_untrusted_by_rules) or is_balance_computable's.
+    """
+    return pd.Series(answers)
+
+
+def balance_inputs():
+    """is_balance_computable's four inputs for an honest hour, where every phase's balance can be trusted.
+
+    Phases A, B and C, each with two homes that sent measured readings (A: H1 and H2; B: H3 and H4; C: H5 and H6),
+    and the transformer measured 40 kWh on each phase. The rules untrusted nobody.
+    Only two homes per phase are listed: is_balance_computable looks at each home's trust and estimated flag, not at
+    the phase's sums, so the sums (39 kWh reported) don't need to add up from these two homes.
+    Returns the phase rows, the home rows, and the rules' two answers (one per home row, one per phase row).
+    """
+    new_hour_phase = phase_table([
+        phase_row(COLUMNS_HOUR, "A", energy=40.0, homes_kwh=39.0),
+        phase_row(COLUMNS_HOUR, "B", energy=40.0, homes_kwh=39.0),
+        phase_row(COLUMNS_HOUR, "C", energy=40.0, homes_kwh=39.0),
+    ])
+    new_hour_home = home_table([
+        home_row_at_columns_hour("H1", "A", kwh=0.5),
+        home_row_at_columns_hour("H2", "A", kwh=0.5),
+        home_row_at_columns_hour("H3", "B", kwh=0.5),
+        home_row_at_columns_hour("H4", "B", kwh=0.5),
+        home_row_at_columns_hour("H5", "C", kwh=0.5),
+        home_row_at_columns_hour("H6", "C", kwh=0.5),
+    ])
+    is_home_untrusted = yes_no([False, False, False, False, False, False])  # one answer per home: nobody untrusted
+    is_phase_untrusted = yes_no([False, False, False])  # one answer per phase: no phase untrusted
+    return new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted
+
+
+# =============================================================================
+# FOREST COLUMNS (forest_columns.py): consumption_vs_usual
+# =============================================================================
+def test_consumption_vs_usual_divides_kwh_by_the_usual():
+    """The column's basic job: this hour's kWh divided by the home's usual kWh."""
+    # Prepare: H1 used 0.9 kWh and H2 0.3 kWh; both usually use 0.6 kWh at this hour. The rules untrusted nobody.
+    new_hour_home = home_table([home_row_at_columns_hour("H1", "A", 0.9), home_row_at_columns_hour("H2", "B", 0.3)])
+    usual_kwh = pd.Series([0.6, 0.6])  # one usual per home row, as consumption_usuals would give them
+    # Run.
+    ratios = consumption_vs_usual(new_hour_home, usual_kwh, yes_no([False, False]))
+    # Check: 0.9 ÷ 0.6 = 1.5 (50% more than usual) and 0.3 ÷ 0.6 = 0.5 (half the usual).
+    assert list(ratios) == pytest.approx([1.5, 0.5])
+
+
+def test_consumption_vs_usual_raises_a_tiny_usual_to_the_minimum():
+    """A usual below the minimum (in settings.py) counts as the minimum, so a tiny night usual can't make the ratio
+    jump, and a usual of 0 can't make it divide by zero."""
+    # Prepare: at night H1 usually uses 0.01 kWh and H2 0 kWh, both below the minimum; tonight they used 0.08 and 0.1.
+    new_hour_home = home_table([home_row_at_columns_hour("H1", "A", 0.08), home_row_at_columns_hour("H2", "B", 0.1)])
+    usual_kwh = pd.Series([0.01, 0.0])
+    # Run.
+    ratios = consumption_vs_usual(new_hour_home, usual_kwh, yes_no([False, False]))
+    # Check: both are divided by the minimum instead. With today's 0.05 kWh: 0.08 ÷ 0.05 = 1.6 (not 0.08 ÷ 0.01 = 8)
+    # and 0.1 ÷ 0.05 = 2.0.
+    minimum = settings.CONSUMPTION_USUAL_MINIMUM_KWH
+    assert list(ratios) == pytest.approx([0.08 / minimum, 0.1 / minimum])
+
+
+def test_consumption_vs_usual_is_empty_without_a_usual_or_a_kwh():
+    """No usual yet (a home's first days) or no kWh (nothing arrived): nothing to compare, so the column is empty."""
+    # Prepare: H1 has no usual yet; H2 sent no kWh; H3 has both (0.9 kWh, usual 0.6).
+    new_hour_home = home_table([
+        home_row_at_columns_hour("H1", "A", 0.9),
+        home_row_at_columns_hour("H2", "B", np.nan),  # np.nan: an empty value
+        home_row_at_columns_hour("H3", "C", 0.9),
+    ])
+    usual_kwh = pd.Series([np.nan, 0.6, 0.6])
+    # Run.
+    ratios = consumption_vs_usual(new_hour_home, usual_kwh, yes_no([False, False, False]))
+    # Check: H1 and H2 are empty (isna: "is it empty?"); H3 still gets 0.9 ÷ 0.6 = 1.5.
+    assert list(ratios.isna()) == [True, True, False]
+    assert ratios.iloc[2] == pytest.approx(1.5)  # iloc[2]: the third row's value
+
+
+def test_consumption_vs_usual_is_empty_for_a_home_the_rules_untrusted():
+    """A reading the rules untrusted (e.g. caught as stuck, or covered by an outage) gets no value: it's broken, and a
+    broken value must never look real to the forest."""
+    # Prepare: H1 is frozen on 0.9 kWh and the stuck rule caught it; H2 used 0.9 kWh too, honestly. Both usually use
+    # 0.6 kWh. The rules' answers: H1 untrusted, H2 not.
+    new_hour_home = home_table([home_row_at_columns_hour("H1", "A", 0.9), home_row_at_columns_hour("H2", "B", 0.9)])
+    usual_kwh = pd.Series([0.6, 0.6])
+    # Run.
+    ratios = consumption_vs_usual(new_hour_home, usual_kwh, yes_no([True, False]))
+    # Check: H1 is empty; H2 still gets 1.5.
+    assert list(ratios.isna()) == [True, False]
+    assert ratios.iloc[1] == pytest.approx(1.5)
+
+
+# =============================================================================
+# FOREST COLUMNS (forest_columns.py): is_balance_computable
+# =============================================================================
+def test_is_balance_computable_when_every_number_is_measured_and_trusted():
+    """On an honest hour every phase's balance can be computed: one yes per phase."""
+    # Prepare: the honest hour.
+    new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted = balance_inputs()
+    # Run.
+    is_computable = is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted)
+    # Check: yes for A, B and C.
+    assert list(is_computable) == [True, True, True]
+
+
+# Each case breaks one thing on phase B only. B's balance must become uncomputable, and A's and C's must stay
+# computable: a problem on one phase never blinds the other two.
+@pytest.mark.parametrize(
+    "what_breaks",
+    [
+        "a home the rules untrusted",
+        "an estimated reading",
+        "the phase row untrusted",
+        "no energy measured",
+        "an empty energy reading",
+    ],
+)
+def test_is_balance_computable_says_no_on_that_phase_only(what_breaks):
+    """Any number in B's balance that isn't a real, trusted measurement makes B's balance (and only B's) uncomputable."""
+    new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted = balance_inputs()
+    is_h3 = new_hour_home["home_id"] == "H3"  # H3's row (H3 is on phase B)
+    is_phase_b = new_hour_phase["phase"] == "B"  # phase B's row
+    # Prepare: break one thing on phase B.
+    if what_breaks == "a home the rules untrusted":
+        is_home_untrusted.loc[is_h3] = True  # e.g. the stuck rule caught H3
+    elif what_breaks == "an estimated reading":
+        new_hour_home.loc[is_h3, "estimated"] = 1  # the utility filled H3's value in itself
+    elif what_breaks == "the phase row untrusted":
+        is_phase_untrusted.loc[is_phase_b] = True  # e.g. the transformer's meter on B is broken
+    elif what_breaks == "no energy measured":
+        new_hour_phase.loc[is_phase_b, "transformer_kwh"] = 0.0  # the transformer sent nothing on B
+    elif what_breaks == "an empty energy reading":
+        new_hour_phase.loc[is_phase_b, "transformer_kwh"] = np.nan  # the transformer's value for B never arrived
+    # Run.
+    is_computable = is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted)
+    # Check: no for B only.
+    assert list(is_computable) == [True, False, True]
+
+
+# =============================================================================
+# FOREST COLUMNS (forest_columns.py): phase_unexplained_energy
+# =============================================================================
+def test_phase_unexplained_energy_follows_the_formula():
+    """(transformer energy − its homes' kWh − expected losses) ÷ transformer energy × 100, phase by phase."""
+    # Prepare: three phases whose balances can all be computed.
+    #   A: 40 kWh sent, 39 reported, 0.6 expected losses: 0.4 kWh unexplained, 1% of 40 (energy missing)
+    #   B: 20 kWh sent, 20.1 reported, 0.2 expected losses: -0.3 kWh unexplained, -1.5% of 20 (energy appearing)
+    #   C: 10 kWh sent, 9.95 reported, 0.05 expected losses: 0 kWh unexplained, 0% (everything adds up)
+    new_hour_phase = phase_table([
+        phase_row(COLUMNS_HOUR, "A", energy=40.0, homes_kwh=39.0),
+        phase_row(COLUMNS_HOUR, "B", energy=20.0, homes_kwh=20.1),
+        phase_row(COLUMNS_HOUR, "C", energy=10.0, homes_kwh=9.95),
+    ])
+    expected_losses_kwh = pd.Series([0.6, 0.2, 0.05])  # one per phase row, as expected_losses would give them
+    # Run.
+    percentages = phase_unexplained_energy(new_hour_phase, expected_losses_kwh, yes_no([True, True, True]))
+    # Check.
+    assert list(percentages) == pytest.approx([1.0, -1.5, 0.0])
+
+
+def test_phase_unexplained_energy_is_empty_where_the_balance_cant_be_computed():
+    """Where is_balance_computable said no, the column is empty: a balance built on a wrong or missing number must
+    never look real to the forest."""
+    # Prepare: A is honest (1%, as above); the transformer measured nothing on B (0 kWh, so its expected losses are 0),
+    # and is_balance_computable said no for it. With 0 kWh, the % would divide by zero: it must stay silent and empty.
+    new_hour_phase = phase_table([
+        phase_row(COLUMNS_HOUR, "A", energy=40.0, homes_kwh=39.0),
+        phase_row(COLUMNS_HOUR, "B", energy=0.0, homes_kwh=0.0),
+    ])
+    expected_losses_kwh = pd.Series([0.6, 0.0])
+    # Run.
+    percentages = phase_unexplained_energy(new_hour_phase, expected_losses_kwh, yes_no([True, False]))
+    # Check: A still 1%; B empty.
+    assert percentages.iloc[0] == pytest.approx(1.0)
+    assert list(percentages.isna()) == [False, True]
+
+
+# =============================================================================
+# FOREST COLUMNS (forest_columns.py): transformer_voltage_vs_usual
+# =============================================================================
+def test_transformer_voltage_vs_usual_subtracts_the_usual():
+    """The column's basic job: the transformer's voltage on each phase minus its usual, in volts."""
+    # Prepare: the transformer reads 226 V on A, 238 V on B and 231 V on C; each phase usually reads 231 V.
+    new_hour_phase = phase_table([
+        phase_row(COLUMNS_HOUR, "A", energy=40.0, homes_kwh=39.0, voltage=226.0),
+        phase_row(COLUMNS_HOUR, "B", energy=40.0, homes_kwh=39.0, voltage=238.0),
+        phase_row(COLUMNS_HOUR, "C", energy=40.0, homes_kwh=39.0, voltage=231.0),
+    ])
+    usual_voltage = pd.Series([231.0, 231.0, 231.0])  # one per phase row, as transformer_voltage_usuals would give
+    # Run.
+    differences = transformer_voltage_vs_usual(new_hour_phase, usual_voltage, yes_no([False, False, False]))
+    # Check: A 5 V below usual (a small sag), B 7 V above (a small surge), C exactly as usual.
+    assert list(differences) == pytest.approx([-5.0, 7.0, 0.0])
+
+
+def test_transformer_voltage_vs_usual_is_empty_without_a_usual():
+    """A phase with no usual yet (the first days of the data) has nothing to compare with: its column is empty."""
+    # Prepare: A has a usual of 231 V; B has none yet.
+    new_hour_phase = phase_table([
+        phase_row(COLUMNS_HOUR, "A", energy=40.0, homes_kwh=39.0, voltage=226.0),
+        phase_row(COLUMNS_HOUR, "B", energy=40.0, homes_kwh=39.0, voltage=226.0),
+    ])
+    usual_voltage = pd.Series([231.0, np.nan])
+    # Run.
+    differences = transformer_voltage_vs_usual(new_hour_phase, usual_voltage, yes_no([False, False]))
+    # Check: A gets -5 V; B is empty.
+    assert differences.iloc[0] == pytest.approx(-5.0)
+    assert list(differences.isna()) == [False, True]
+
+
+def test_transformer_voltage_vs_usual_is_empty_for_a_phase_the_rules_untrusted():
+    """A phase row the rules untrusted gets no value. Here phase B is out (0 V): without this, it would read
+    0 - 231 = -231 V, a huge fake sag."""
+    # Prepare: A is normal (226 V); B reads 0 V and the outage rule untrusted its row. Both usually read 231 V.
+    new_hour_phase = phase_table([
+        phase_row(COLUMNS_HOUR, "A", energy=40.0, homes_kwh=39.0, voltage=226.0),
+        phase_row(COLUMNS_HOUR, "B", energy=0.0, homes_kwh=0.0, voltage=0.0),
+    ])
+    usual_voltage = pd.Series([231.0, 231.0])
+    # Run.
+    differences = transformer_voltage_vs_usual(new_hour_phase, usual_voltage, yes_no([False, True]))
+    # Check: A still gets -5 V; B is empty.
+    assert differences.iloc[0] == pytest.approx(-5.0)
+    assert list(differences.isna()) == [False, True]

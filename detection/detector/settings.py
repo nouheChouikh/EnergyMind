@@ -23,6 +23,12 @@ USUAL_MIN_VALUES = 3
 USUAL_OF_CONSUMPTION = "consumption"  # a home's kWh
 USUAL_OF_TRANSFORMER_VOLTAGE = "transformer_voltage"  # a phase's voltage, measured by the transformer
 
+# ----------------------------------------------------------------------------- the forest's columns (plan step 4)
+# consumption_vs_usual divides this hour's kWh by the home's usual. A usual below this minimum counts as the minimum,
+# so a tiny night usual can't make the ratio jump (0.08 kWh against a usual of 0.01 would read "8 times usual").
+# 0.05 kWh is about what a fridge alone uses in an hour: below it, the home is practically empty. To check on 2018.
+CONSUMPTION_USUAL_MINIMUM_KWH = 0.05
+
 # ----------------------------------------------------------------------------- definition rules (plan step 2)
 # Stuck meter: the whole reading (kWh, V and I) identical this many hours in a row.
 # Honest meters repeat their whole reading at most 3 hours in a row (dataset checks, 2018).
