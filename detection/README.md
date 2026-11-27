@@ -31,7 +31,7 @@ detection/
 │   ├── trust.py                    which home and phase rows may feed "usual"
 │   ├── preparation/                tables.py, input_checks.py
 │   ├── rules/                      meter_rules.py, street_rules.py, findings.py (all rules, in order)
-│   ├── features/                   losses_regression.py, usual.py, forest_table.py (the five features)
+│   ├── features/                   losses_regression.py, usual.py, voltage_gap_with_neighbours.py, forest_table.py
 │   ├── forest/                     forest_training.py, forest_scoring.py
 │   ├── diagnosis/                  shap_reasons.py, verdict_patterns.py, home_naming.py
 │   ├── incidents/                  incident_tracking.py, confidence.py, explanation_cards.py

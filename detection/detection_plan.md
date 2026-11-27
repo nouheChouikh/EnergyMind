@@ -77,7 +77,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
   - **unchecked:** the forest couldn't score it (see below). Nobody knows whether it's normal, so it stays out of "usual"; the fallback above covers long gaps.
 - **A grid event untrusts everything it touches; a home problem untrusts only that home.** An outage, a sag or a surge on a phase untrusts the phase row and every home row on that phase: during a sag, the homes' consumption is shaped by the grid, not by the families. A theft or a broken meter untrusts only that home's row.
 - **Hours diagnosed as a real change in use** (holiday, new appliance) **stay trusted**, so "usual" follows real life.
-- **Neighbours** are the other homes on the same cable and phase (7 or 8 on the real street). Those whose reading is untrusted are left out of the neighbours' median; if none is left, `voltage_gap_with_neighbours_vs_usual` can't be computed.
+- **Neighbours** are the other homes on the same cable and phase (7 or 8 on the real street). Those whose reading is untrusted are left out of the neighbours' median; if none is left, `voltage_gap_with_neighbours_vs_usual` can't be computed. An estimated reading still counts (the rules don't untrust it, and one guessed voltage barely moves the median). Each hour's gap is computed once, after the rules, and kept in the memory with the home's row: the usual gap is the median of past gaps.
 - **When one of a home's features can't be computed, its hour is unchecked:**
   - the home has no usual yet;
   - none of its neighbours is usable;
@@ -164,10 +164,10 @@ There's **no pattern for energy appearing** (meters reporting more than the tran
 
 ## Step 9. The hourly loop
 
-Every hour, the operator app sends the new hour's readings plus a memory: the past hours' home and phase rows (about 28 days, what the usual needs), each with its trust state, plus the last valid usual of each home and phase (the fallback when fewer than 3 trusted values remain). The detector stores nothing itself; it judges the new hour once and returns the new rows with their trust state and the updated last usuals, which the app keeps.
+Every hour, the operator app sends the new hour's readings plus a memory: the past hours' home and phase rows (about 28 days, what the usual needs), each with its trust state (and, for a home row, its voltage gap with its neighbours), plus the last valid usual of each home and phase (the fallback when fewer than 3 trusted values remain). The detector stores nothing itself; it judges the new hour once and returns the new rows with their trust state (and gap) and the updated last usuals, which the app keeps.
 
 1. Run the definition rules.
-2. Compute the five features, using trusted past hours only.
+2. Compute each home's voltage gap with its neighbours, then the five features, using trusted past hours only.
 3. Score the 75 home rows with the forest.
 4. Explain each flagged row (SHAP) and diagnose it.
 5. Update incidents and update trust flags.
