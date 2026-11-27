@@ -3,7 +3,7 @@
 What it does: for the new hour, gives each home's usual consumption, each home's usual voltage gap with its
 neighbours, and each phase's usual transformer voltage:
   - normally, the median of the same hour, on the same type of day, over the last 28 calendar days, using the
-    memory's trusted rows only, when there are at least 3 of them;
+    memory's trusted rows only (for a very first usual, its unchecked rows too), when there are at least 3 of them;
   - otherwise, the last usual remembered for that hour and type of day (the last usuals table);
   - otherwise (none ever computed, e.g. the first days of the data), empty.
 Every new median is also remembered: it overwrites the old value in the last usuals table.
@@ -17,6 +17,10 @@ Choices:
   - 28 calendar days: keeps the comparison in the current season. Near the start of the data there are fewer days
     before the new hour: the values that exist count, so a home's first usual comes on its 4th weekday (or 4th
     weekend day) at that hour; before that it has none and is unchecked.
+  - The first-usual exception: while a home (or phase) has nothing remembered for a usual at that hour and type of
+    day, its unchecked rows count too (rows no rule caught, but that nobody could check). Without it, its first
+    usual could never form: with no usual, a row can't be scored, so it stays unchecked, and unchecked rows don't
+    count. Once its first usual is remembered, only trusted rows count again. Untrusted rows never count.
   - Built for live use: the usual comes only from the memory's past rows; the new hour is what gets compared.
   - The last usuals live in their own table because the memory only keeps about 28 days.
   - One shared function does the work for all three usuals; each one only says which value it reads and under
@@ -104,22 +108,8 @@ def usuals_at_new_hour(new_hour_rows, past_rows, home_or_phase_column, value_col
     new_hour = new_hour_rows["timestamp"].iloc[0]  # the hour being checked (the same on every row)
     day_type = new_hour_rows["day_type"].iloc[0]  # its type of day (the same on every row)
 
-    # 1. The past rows that count: same hour of day, same type of day, within the last 28 days, trusted.
-    #    (Near the start of the data there are fewer than 28 days before the new hour: the rows that exist count.)
-    window_start = new_hour - pd.Timedelta(days=settings.USUAL_WINDOW_DAYS)
-    is_same_hour_of_day = past_rows["timestamp"].dt.hour == new_hour.hour
-    is_same_day_type = past_rows["day_type"] == day_type
-    is_in_window = (past_rows["timestamp"] >= window_start) & (past_rows["timestamp"] < new_hour)
-    is_trusted = past_rows["trust"] == settings.TRUST_TRUSTED
-    counted_rows = past_rows[is_same_hour_of_day & is_same_day_type & is_in_window & is_trusted]
-
-    # 2. Each home's (or phase's) median, kept only when it comes from at least 3 values.
-    values_by_home_or_phase = counted_rows.groupby(home_or_phase_column)[value_column]
-    medians = values_by_home_or_phase.median()
-    nb_values = values_by_home_or_phase.count()  # empty values aren't counted
-    new_medians = medians[nb_values >= settings.USUAL_MIN_VALUES]
-
-    # 3. The usuals already remembered for this usual (e.g. consumption), this hour of day and this type of day.
+    # 1. The usuals already remembered for this usual (e.g. consumption), at this hour of day and this type of day.
+    #    This comes first because step 3 needs to know which homes (or phases) already have one.
     is_same_usual_hour_and_day_type = (
         (last_usuals["usual_of"] == usual_of)
         & (last_usuals["hour_of_day"] == new_hour.hour)
@@ -128,13 +118,41 @@ def usuals_at_new_hour(new_hour_rows, past_rows, home_or_phase_column, value_col
     remembered_rows = last_usuals[is_same_usual_hour_and_day_type]
     remembered_usuals = remembered_rows.set_index("home_or_phase")["usual"].astype(float)  # findable by home
 
-    # 4. Each row's usual: its new median; if it has none, its remembered usual; if nothing is remembered, empty.
+    # 2. The past rows comparable with the new hour: the same hour of day, the same type of day, and within the
+    #    last 28 days. (Near the start of the data there are fewer days before the new hour: the rows that exist count.)
+    window_start = new_hour - pd.Timedelta(days=settings.USUAL_WINDOW_DAYS)
+    is_same_hour_of_day = past_rows["timestamp"].dt.hour == new_hour.hour
+    is_same_day_type = past_rows["day_type"] == day_type
+    is_in_window = (past_rows["timestamp"] >= window_start) & (past_rows["timestamp"] < new_hour)
+    is_comparable_with_new_hour = is_same_hour_of_day & is_same_day_type & is_in_window  # "&" means "and"
+
+    # 3. Of those, the rows whose trust state lets them count:
+    #      a trusted row always counts;
+    #      an unchecked row counts only while its home (or phase) has no remembered usual yet (the first-usual
+    #      exception: without it, a home's first usual could never form);
+    #      an untrusted row never counts.
+    is_trusted = past_rows["trust"] == settings.TRUST_TRUSTED
+    is_unchecked = past_rows["trust"] == settings.TRUST_UNCHECKED
+    homes_or_phases_with_a_remembered_usual = remembered_usuals.index  # their names, e.g. ["H1", "H3"]
+    # For each past row: does its home (or phase) still have no remembered usual? ("~" means "not")
+    has_no_remembered_usual_yet = ~past_rows[home_or_phase_column].isin(homes_or_phases_with_a_remembered_usual)
+    is_unchecked_before_first_usual = is_unchecked & has_no_remembered_usual_yet
+    is_allowed_by_trust_state = is_trusted | is_unchecked_before_first_usual  # "|" means "or"
+    counted_rows = past_rows[is_comparable_with_new_hour & is_allowed_by_trust_state]
+
+    # 4. Each home's (or phase's) median, kept only when it comes from at least 3 values.
+    values_by_home_or_phase = counted_rows.groupby(home_or_phase_column)[value_column]
+    medians = values_by_home_or_phase.median()
+    nb_values = values_by_home_or_phase.count()  # empty values aren't counted
+    new_medians = medians[nb_values >= settings.USUAL_MIN_VALUES]
+
+    # 5. Each row's usual: its new median; if it has none, its remembered usual; if nothing is remembered, empty.
     homes_or_phases = new_hour_rows[home_or_phase_column]  # each row's home (or phase)
     usuals = homes_or_phases.map(new_medians)  # empty where there were fewer than 3 values
     usuals = usuals.fillna(homes_or_phases.map(remembered_usuals))  # fill those with the remembered usual, if any
     usuals = usuals.astype(float)  # as decimal numbers
 
-    # 5. Remember the new medians: each one overwrites the old value for the same home (or phase).
+    # 6. Remember the new medians: each one overwrites the old value for the same home (or phase).
     is_overwritten = is_same_usual_hour_and_day_type & last_usuals["home_or_phase"].isin(new_medians.index)
     kept_rows = last_usuals[~is_overwritten]  # every remembered usual except the ones being overwritten
     new_rows = pd.DataFrame({

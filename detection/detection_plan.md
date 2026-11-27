@@ -1,6 +1,6 @@
 # EnergyMind MVP: build plan
 
-Status: agreed design, 12 November 2026; revised 23 November 2026 (five features, trust on two levels). Build from this file.
+Status: agreed design, 12 November 2026; revised 23 November 2026 (five features, trust on two levels) and 27 November 2026 (a first usual also counts unchecked hours). Build from this file.
 
 **The core:** rules handle definitions; one regression handles losses; five simple features (the values the forest learns from, one set per home and hour); an Isolation Forest learns what normal looks like; SHAP says why a row was flagged; a short diagnosis names it.
 
@@ -51,7 +51,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 - **Normal case:** the median of the same hour, on the same type of day, over the last 28 calendar days, **using trusted hours only**. It needs at least 3 trusted values. Using calendar days keeps the comparison in the current season.
 - **Two types of day:** weekday, and weekend-or-holiday. Holidays join weekends because 4 weeks rarely contain more than one or two holidays, too few values for a median of their own.
 - **Fewer than 3 trusted values:**
-  - a home that has never had a valid usual (start of the data, a new connection) isn't scored yet; the definition rules still run on it;
+  - a home that has never had a valid usual (start of the data, a new connection) isn't scored yet; the definition rules still run on it. Its very first usual also counts its unchecked hours (no rule caught them, but nobody could check them): otherwise it could never get one, since an hour without a usual can't be scored and stays unchecked. From its first usual on, only trusted hours count. The same holds for each phase's first transformer voltage usual;
   - a home that already had one keeps its last valid usual for that hour and type of day, until it has 3 trusted values again. Otherwise a theft lasting more than about 3 weeks would leave too few trusted values, and the home would stop being scored while it's being robbed. The same applies to the transformer's voltage usual after a long grid event.
 
 | Feature | How it's computed | Question it answers |
@@ -72,9 +72,9 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 **The trust rule, so anomalies don't distort "usual":**
 - **Two levels.** Each home row has a trust state (it feeds the home's consumption usual and its voltage gap's usual), and so does each phase row (it feeds the phase's transformer voltage usual).
 - **Three states.** Only **trusted** rows feed "usual":
-  - **trusted:** checked by the forest and found normal, or diagnosed as a real change in use. Estimated readings also count as trusted (the utility's own values, kept for history). During learning there's no forest yet, so a row is trusted if no rule caught it and it can be scored;
+  - **trusted:** checked by the forest and found normal, or diagnosed as a real change in use. Estimated readings also count as trusted (the utility's own values, kept for history). During learning there's no forest yet, so a row is trusted if no rule caught it and it can be scored (it was measured, and all five features exist);
   - **untrusted:** a rule caught it, or the system diagnosed it as a fault or "unknown". It stays untrusted for as long as that incident lasts;
-  - **unchecked:** the forest couldn't score it (see below). Nobody knows whether it's normal, so it stays out of "usual"; the fallback above covers long gaps.
+  - **unchecked:** the forest couldn't score it (see below). Nobody knows whether it's normal, so it stays out of "usual" (except toward a very first usual, see above); the fallback above covers long gaps. A phase row is unchecked while its transformer voltage has no usual to compare with.
 - **A grid event untrusts everything it touches; a home problem untrusts only that home.** An outage, a sag or a surge on a phase untrusts the phase row and every home row on that phase: during a sag, the homes' consumption is shaped by the grid, not by the families. A theft or a broken meter untrusts only that home's row.
 - **Hours diagnosed as a real change in use** (holiday, new appliance) **stay trusted**, so "usual" follows real life.
 - **Neighbours** are the other homes on the same cable and phase (7 or 8 on the real street). Those whose reading is untrusted are left out of the neighbours' median; if none is left, `voltage_gap_with_neighbours_vs_usual` can't be computed. An estimated reading still counts (the rules don't untrust it, and one guessed voltage barely moves the median). Each hour's gap is computed once, after the rules, and kept in the memory with the home's row: the usual gap is the median of past gaps.
@@ -228,5 +228,6 @@ Two rules for this table:
 - While a meter's reading is caught by a rule (missing, impossible or stuck) or is estimated, its phase's balance can't be computed, so that phase's homes aren't scored by the forest; the rules still judge them.
 - One home's supply cut, recorded as 0 V while its phase has power, isn't named by a rule: the forest flags it (its voltage is far below its neighbours') and an operator decides (generally, a supply cut wouldn't send anything anyway so it would count as missing)
 - A problem the system misses feeds the usual. The median barely moves until the problem fills half of its values (about 2 weeks); after that, it looks normal to the features that use a usual. Its hours leave the usual within 4 weeks after it ends. The energy balance uses no usual, so a missed theft still shows as energy missing on the phase.
-- Learning has no forest yet, so it treats the history as mostly normal: a long problem hidden in the history is learned as normal.
+- Learning has no forest yet, so it treats the history as mostly normal: a long problem hidden in the history is learned as normal. Likewise, a home's very first usual comes from hours nobody checked: a problem present from its first days becomes its usual.
+- A home alone on its cable and phase has no neighbours, so its voltage gap can't be computed: its gap feature is always empty, and the forest never scores it. The rules still judge it, and energy going missing at its home still shows in its phase's balance.
 - The physics in the dataset is simulated, so the results are an upper bound.

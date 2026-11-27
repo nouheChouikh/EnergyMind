@@ -448,21 +448,54 @@ def test_consumption_usuals_are_the_median_of_trusted_values():
     "left_out_row",
     [
         home_memory_row(pd.Timestamp(2019, 1, 7, 18), "H1", 50.0, trust=settings.TRUST_UNTRUSTED),  # a Monday
-        home_memory_row(pd.Timestamp(2019, 1, 7, 18), "H1", 50.0, trust=settings.TRUST_UNCHECKED),  # a Monday
         home_memory_row(pd.Timestamp(2019, 1, 14, 17), "H1", 50.0),  # Monday at 17:00, not 18:00
         home_memory_row(pd.Timestamp(2019, 1, 12, 18), "H1", 50.0, day_type="weekend_or_holiday"),  # a Saturday
         home_memory_row(pd.Timestamp(2018, 12, 17, 18), "H1", 50.0),  # 29 days before the new hour
     ],
-    ids=["untrusted", "unchecked", "another hour", "the other type of day", "older than 28 days"],
+    ids=["untrusted", "another hour", "the other type of day", "older than 28 days"],
 )
 def test_consumption_usuals_leave_out_rows_that_dont_count(left_out_row):
-    """Only trusted rows, at the same hour, on the same type of day, within the last 28 days feed the usual."""
+    """An untrusted row, another hour, the other type of day, or a row older than 28 days never feeds the usual."""
     # Prepare: H1's five trusted evenings, plus the row that must be left out.
     memory = home_memory(h1_evening_rows() + [left_out_row])
     # Run.
     usuals, _updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals_table([]))
     # Check: still 0.7.
     assert list(usuals) == pytest.approx([0.7])
+
+
+# ----------------------------------------------------------------------------- unchecked rows
+# An unchecked row: no rule caught it, but nobody could check it (one of its features was empty). It counts only
+# toward a home's very first usual: the first-usual exception.
+def test_consumption_usuals_leave_out_unchecked_rows_once_a_usual_is_remembered():
+    """Once a home has a remembered usual, only trusted rows count: an unchecked row is left out."""
+    # Prepare: H1's five trusted evenings (median 0.7), an unchecked Monday holding a wild 50 kWh, and a usual
+    # already remembered for H1 at weekday 18:00 (0.55).
+    unchecked_monday = home_memory_row(pd.Timestamp(2019, 1, 7, 18), "H1", 50.0, trust=settings.TRUST_UNCHECKED)
+    memory = home_memory(h1_evening_rows() + [unchecked_monday])
+    last_usuals = last_usuals_table([last_usual_row("H1", 0.55)])
+    # Run.
+    usuals, _updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals)
+    # Check: still 0.7. If the unchecked Monday counted, the median of the six values would be 0.75.
+    assert list(usuals) == pytest.approx([0.7])
+
+
+def test_consumption_usuals_count_unchecked_rows_for_the_very_first_usual():
+    """While nothing is remembered for a home, its unchecked rows count too. Without this, its first usual could
+    never form: with no usual, a row can't be scored, so it's unchecked, so it wouldn't count."""
+    # Prepare: nothing remembered for H1 yet. Its first three weekday evenings were unchecked (0.5, 0.6 and 0.7 kWh);
+    # the rules untrusted a fourth one (a wild 50 kWh): an untrusted row never counts, even for a first usual.
+    memory = home_memory([
+        home_memory_row(pd.Timestamp(2019, 1, 8, 18), "H1", 0.5, trust=settings.TRUST_UNCHECKED),  # Tuesday
+        home_memory_row(pd.Timestamp(2019, 1, 9, 18), "H1", 0.6, trust=settings.TRUST_UNCHECKED),  # Wednesday
+        home_memory_row(pd.Timestamp(2019, 1, 10, 18), "H1", 0.7, trust=settings.TRUST_UNCHECKED),  # Thursday
+        home_memory_row(pd.Timestamp(2019, 1, 11, 18), "H1", 50.0, trust=settings.TRUST_UNTRUSTED),  # Friday
+    ])
+    # Run: H1's usual at Tuesday 15 January, 18:00.
+    usuals, updated_last_usuals = consumption_usuals(new_hour_home_rows(["H1"]), memory, last_usuals_table([]))
+    # Check: the median of 0.5, 0.6 and 0.7 is 0.6, and it's remembered (from now on, only trusted rows count).
+    assert list(usuals) == pytest.approx([0.6])
+    assert remembered_usuals(updated_last_usuals, "H1") == pytest.approx([0.6])
 
 
 # ----------------------------------------------------------------------------- too few trusted values

@@ -1,7 +1,9 @@
 """Tests for detector/trust.py: which home rows and phase rows may feed "usual" (plan step 4, the trust rule).
 
-What it does: checks, on the made-up street of conftest.py, which homes and which phases the rules make untrusted
-at the new hour, for each kind of finding and for several findings at once.
+What it does: checks trust.py's three parts:
+  - the rules' answers, on the made-up street of conftest.py: which homes and which phases the rules make untrusted
+    at the new hour, for each kind of finding and for several findings at once;
+  - which home rows the forest can score, and the trust states during learning, on small hand-written tables.
 
 Why it exists: trust decides what the usuals learn from. If a caught reading slipped through as trusted, it would
 feed a usual, and every later hour would be compared with a polluted "normal".
@@ -11,17 +13,30 @@ Choices:
     only the findings, so the street's readings stay honest.
   - finding() and findings_table() are copied from test_features.py (the losses tests use them too): about ten lines,
     simpler than a shared helper file.
-  - Test names start with what they test (test_untrusted_by_rules_...), so the test report reads in order.
+  - The scorable rows and the trust states read only a few columns, so their tests write small tables by hand: each
+    row holds exactly the case it tests.
+  - The expected trust states are written out ("trusted", "untrusted", "unchecked") rather than imported, so a
+    change to the agreed names is noticed.
+  - Test names start with what they test (test_untrusted_by_rules_..., test_is_home_row_scorable_...,
+    test_home_trust_states_during_learning_..., test_phase_trust_states_during_learning_...), so the test report
+    reads in order.
   - Names say what a value holds: a yes/no for each row starts with is_; a set of names is named after what's in it
     (untrusted_homes). An answer keeps the full name of the function that gives it (is_home_untrusted_by_rules): the
     function is called through its file (trust.is_home_untrusted_by_rules), so the two names never clash.
 """
 
+import numpy as np  # np.nan: an empty value
 import pandas as pd  # tables
+import pytest  # the test tool; @pytest.mark.parametrize runs one test once per case in a list
 
 from detector import settings  # the scope and verdict names a finding is written with
 from detector import trust  # the code being tested, called through its file (e.g. trust.is_home_untrusted_by_rules)
-from detector.data_formats import RULE_FINDINGS_COLUMNS  # the findings table's columns
+from detector.data_formats import (  # the tables' columns
+    FOREST_TABLE_COLUMNS,
+    HOME_HOURS_COLUMNS,
+    PHASE_HOURS_COLUMNS,
+    RULE_FINDINGS_COLUMNS,
+)
 from detector.preparation.tables import build_phase_hours  # builds the phase table from the made-up street
 
 
@@ -30,7 +45,7 @@ from detector.preparation.tables import build_phase_hours  # builds the phase ta
 # =============================================================================
 # The tests use the made-up street of conftest.py at Friday 12:00 (H1 and H2 on phase A, H3 and H4 on B, H5 and H6
 # on C), with findings planted by hand. Trust reads only the findings, so the readings themselves stay honest.
-TRUST_HOUR = pd.Timestamp(2019, 1, 4, 12)  # Friday 12:00, an hour of the made-up street
+TRUST_HOUR = pd.Timestamp(2019, 1, 4, 12)  # the new hour every test in this file checks: Friday 12:00
 ALL_HOMES = {"H1", "H2", "H3", "H4", "H5", "H6"}  # every home of the made-up street
 ALL_PHASES = {"A", "B", "C"}
 
@@ -146,3 +161,170 @@ def test_untrusted_by_rules_findings_add_up(home_hours, transformer_readings):
     stuck = finding(TRUST_HOUR, settings.SCOPE_HOME, settings.VERDICT_STUCK, phase="B", home_id="H3")
     # Run and check: H3 for its own finding, H5 and H6 for the outage; only phase C's row.
     assert names_untrusted_by_rules(home_hours, transformer_readings, [outage, stuck]) == ({"H3", "H5", "H6"}, {"C"})
+
+
+# =============================================================================
+# WHICH HOME ROWS THE FOREST CAN SCORE, AND THE TRUST STATES: helpers
+# =============================================================================
+# These tests write their tables by hand, at TRUST_HOUR. pd.DataFrame(rows, columns=...) makes a table holding the
+# rows given, with exactly the columns named.
+def home_row(home_id, phase, estimated=0):
+    """One home row of the new hour. Only the home, its phase and its estimated flag (1 = the utility filled the
+    value in itself) matter here; the other columns hold ordinary values."""
+    return {
+        "timestamp": TRUST_HOUR,
+        "home_id": home_id,
+        "phase": phase,
+        "cable": 1,
+        "contracted_kw": 3.3,
+        "day_type": "weekday",
+        "kwh": 0.5,
+        "voltage_v": 230.0,
+        "current_a": 1.0,
+        "estimated": estimated,
+    }
+
+
+def phase_row(phase):
+    """One phase row of the new hour. Only the phase matters here; the other columns hold ordinary values."""
+    return {
+        "timestamp": TRUST_HOUR,
+        "phase": phase,
+        "day_type": "weekday",
+        "transformer_kwh": 40.0,
+        "transformer_voltage_v": 231.0,
+        "homes_kwh": 39.0,
+        "nb_homes_reporting": 25,
+        "nb_homes_on_phase": 25,
+    }
+
+
+def forest_table_row(home_id, consumption_vs_usual=1.0, voltage_gap_with_neighbours_vs_usual=0.0,
+                     phase_unexplained_energy=0.0, transformer_voltage_vs_usual=0.0):
+    """One row of the forest table at the new hour: every feature filled in with an ordinary value, unless given
+    (np.nan: empty)."""
+    return {
+        "timestamp": TRUST_HOUR,
+        "home_id": home_id,
+        "consumption_vs_usual": consumption_vs_usual,
+        "voltage_gap_with_neighbours_vs_usual": voltage_gap_with_neighbours_vs_usual,
+        "phase_unexplained_energy": phase_unexplained_energy,
+        "transformer_voltage_vs_usual": transformer_voltage_vs_usual,
+        "hour": TRUST_HOUR.hour,  # 12
+    }
+
+
+# =============================================================================
+# WHICH HOME ROWS THE FOREST CAN SCORE (is_home_row_scorable)
+# =============================================================================
+def test_is_home_row_scorable_leaves_out_caught_and_estimated_readings():
+    """The forest can score a row the rules didn't untrust, that was measured, with all five features. A caught
+    reading is broken, and an estimated one is the utility's guess: neither is scored."""
+    # Prepare: the rules caught H1, H2's reading is estimated, H3 is neither; all three have every feature filled in.
+    new_hour_home = pd.DataFrame(
+        [home_row("H1", "A"), home_row("H2", "A", estimated=1), home_row("H3", "A")], columns=HOME_HOURS_COLUMNS
+    )
+    forest_table = pd.DataFrame(
+        [forest_table_row("H1"), forest_table_row("H2"), forest_table_row("H3")], columns=FOREST_TABLE_COLUMNS
+    )
+    is_home_untrusted_by_rules = pd.Series([True, False, False])  # the rules untrusted H1 only
+    # Run.
+    is_home_row_scorable = trust.is_home_row_scorable(new_hour_home, is_home_untrusted_by_rules, forest_table)
+    # Check: no for H1 (caught), no for H2 (estimated), yes for H3.
+    assert list(is_home_row_scorable) == [False, False, True]
+
+
+# Each case empties one feature. The forest scores a whole row at once, so with any one feature empty there's
+# nothing complete to score.
+@pytest.mark.parametrize(
+    "empty_feature",
+    [
+        "consumption_vs_usual",  # e.g. the home has no usual yet
+        "voltage_gap_with_neighbours_vs_usual",  # e.g. none of its neighbours is usable
+        "phase_unexplained_energy",  # e.g. a meter on its phase was caught, so the balance can't be computed
+        "transformer_voltage_vs_usual",  # e.g. the transformer's reading on its phase is broken
+    ],
+)
+def test_is_home_row_scorable_says_no_when_a_feature_is_empty(empty_feature):
+    """A measured row the rules didn't untrust still can't be scored if any one of its features is empty."""
+    # Prepare: H1, measured, with this one feature empty; the rules untrusted nobody.
+    new_hour_home = pd.DataFrame([home_row("H1", "A")], columns=HOME_HOURS_COLUMNS)
+    h1_forest_table_row = forest_table_row("H1")
+    h1_forest_table_row[empty_feature] = np.nan  # this one feature couldn't be computed
+    forest_table = pd.DataFrame([h1_forest_table_row], columns=FOREST_TABLE_COLUMNS)
+    is_home_untrusted_by_rules = pd.Series([False])
+    # Run.
+    is_home_row_scorable = trust.is_home_row_scorable(new_hour_home, is_home_untrusted_by_rules, forest_table)
+    # Check: no.
+    assert list(is_home_row_scorable) == [False]
+
+
+# =============================================================================
+# TRUST STATES DURING LEARNING (home_trust_states_during_learning, phase_trust_states_during_learning)
+# =============================================================================
+def test_home_trust_states_during_learning_follow_the_four_cases():
+    """Each home row gets the trust state of the first case that holds: 1. the rules untrusted it: untrusted;
+    2. its reading is estimated: trusted; 3. the forest can score it: trusted (the learning rule);
+    otherwise (a feature is empty): unchecked."""
+    # Prepare: five homes at the new hour.
+    #   H1: the rules untrusted it, and its reading is estimated too (case 1 comes first)
+    #   H2: estimated, with an empty feature (an estimated reading is trusted all the same)
+    #   H3: measured, every feature filled in
+    #   H4: measured, but its balance is empty (e.g. a meter on its phase was caught)
+    #   H5: measured, but it has no usual yet, so consumption_vs_usual is empty
+    new_hour_home = pd.DataFrame(
+        [
+            home_row("H1", "A", estimated=1),
+            home_row("H2", "A", estimated=1),
+            home_row("H3", "B"),
+            home_row("H4", "C"),
+            home_row("H5", "C"),
+        ],
+        columns=HOME_HOURS_COLUMNS,
+    )
+    forest_table = pd.DataFrame(
+        [
+            forest_table_row("H1"),
+            forest_table_row("H2", consumption_vs_usual=np.nan),
+            forest_table_row("H3"),
+            forest_table_row("H4", phase_unexplained_energy=np.nan),
+            forest_table_row("H5", consumption_vs_usual=np.nan),
+        ],
+        columns=FOREST_TABLE_COLUMNS,
+    )
+    is_home_untrusted_by_rules = pd.Series([True, False, False, False, False])  # the rules untrusted H1 only
+    # Run.
+    home_trust_states_during_learning = trust.home_trust_states_during_learning(
+        new_hour_home, is_home_untrusted_by_rules, forest_table
+    )
+    # Check, home by home: H1 untrusted (case 1), H2 trusted (case 2), H3 trusted (case 3), H4 and H5 unchecked.
+    assert list(home_trust_states_during_learning) == ["untrusted", "trusted", "trusted", "unchecked", "unchecked"]
+
+
+def test_phase_trust_states_during_learning_follow_the_three_cases():
+    """Each phase row gets the trust state of the first case that holds: 1. the rules untrusted it: untrusted;
+    2. its transformer voltage feature is empty (no usual voltage yet): unchecked; otherwise: trusted. Its balance
+    plays no part: a phase row only feeds the transformer voltage usual."""
+    # Prepare: three phases with one home each (each home row carries its phase's two phase features).
+    #   A: the rules untrusted it (e.g. its transformer meter is broken), so both its phase features are empty
+    #   B: it has no usual voltage yet (the first days), so its transformer voltage feature is empty
+    #   C: its balance is empty (a meter on C was caught), but its transformer voltage feature is filled in
+    new_hour_phase = pd.DataFrame([phase_row("A"), phase_row("B"), phase_row("C")], columns=PHASE_HOURS_COLUMNS)
+    new_hour_home = pd.DataFrame(
+        [home_row("H1", "A"), home_row("H2", "B"), home_row("H3", "C")], columns=HOME_HOURS_COLUMNS
+    )
+    forest_table = pd.DataFrame(
+        [
+            forest_table_row("H1", phase_unexplained_energy=np.nan, transformer_voltage_vs_usual=np.nan),
+            forest_table_row("H2", transformer_voltage_vs_usual=np.nan),
+            forest_table_row("H3", phase_unexplained_energy=np.nan),
+        ],
+        columns=FOREST_TABLE_COLUMNS,
+    )
+    is_phase_untrusted_by_rules = pd.Series([True, False, False])  # the rules untrusted phase A only
+    # Run.
+    phase_trust_states_during_learning = trust.phase_trust_states_during_learning(
+        new_hour_phase, new_hour_home, is_phase_untrusted_by_rules, forest_table
+    )
+    # Check: A untrusted (case 1), B unchecked (case 2), C trusted (its empty balance plays no part).
+    assert list(phase_trust_states_during_learning) == ["untrusted", "unchecked", "trusted"]
