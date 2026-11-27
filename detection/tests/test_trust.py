@@ -12,16 +12,17 @@ Choices:
   - finding() and findings_table() are copied from test_features.py (the losses tests use them too): about ten lines,
     simpler than a shared helper file.
   - Test names start with what they test (test_untrusted_by_rules_...), so the test report reads in order.
-  - Names say what a value holds: a yes/no for each row starts with is_ (is_home_untrusted); a set of names is named
-    after what's in it (untrusted_homes).
+  - Names say what a value holds: a yes/no for each row starts with is_; a set of names is named after what's in it
+    (untrusted_homes). An answer keeps the full name of the function that gives it (is_home_untrusted_by_rules): the
+    function is called through its file (trust.is_home_untrusted_by_rules), so the two names never clash.
 """
 
 import pandas as pd  # tables
 
 from detector import settings  # the scope and verdict names a finding is written with
+from detector import trust  # the code being tested, called through its file (e.g. trust.is_home_untrusted_by_rules)
 from detector.data_formats import RULE_FINDINGS_COLUMNS  # the findings table's columns
 from detector.preparation.tables import build_phase_hours  # builds the phase table from the made-up street
-from detector.trust import is_home_untrusted_by_rules, is_phase_untrusted_by_rules  # the code being tested
 
 
 # =============================================================================
@@ -64,11 +65,11 @@ def names_untrusted_by_rules(home_hours, transformer_readings, findings):
     new_hour_home, new_hour_phase = street_at_trust_hour(home_hours, transformer_readings)
     rule_findings = findings_table(findings)
     # The code being tested answers True or False for each row.
-    is_home_untrusted = is_home_untrusted_by_rules(new_hour_home, rule_findings)
-    is_phase_untrusted = is_phase_untrusted_by_rules(new_hour_phase, rule_findings)
+    is_home_untrusted_by_rules = trust.is_home_untrusted_by_rules(new_hour_home, rule_findings)
+    is_phase_untrusted_by_rules = trust.is_phase_untrusted_by_rules(new_hour_phase, rule_findings)
     # Keep the names of the rows answered True.
-    untrusted_homes = set(new_hour_home.loc[is_home_untrusted, "home_id"])
-    untrusted_phases = set(new_hour_phase.loc[is_phase_untrusted, "phase"])
+    untrusted_homes = set(new_hour_home.loc[is_home_untrusted_by_rules, "home_id"])
+    untrusted_phases = set(new_hour_phase.loc[is_phase_untrusted_by_rules, "phase"])
     return untrusted_homes, untrusted_phases
 
 
@@ -82,11 +83,11 @@ def test_untrusted_by_rules_nothing_without_findings(home_hours, transformer_rea
     new_hour_home, new_hour_phase = street_at_trust_hour(home_hours, transformer_readings)
     no_findings = findings_table([])
     # Run: both functions.
-    is_home_untrusted = is_home_untrusted_by_rules(new_hour_home, no_findings)
-    is_phase_untrusted = is_phase_untrusted_by_rules(new_hour_phase, no_findings)
+    is_home_untrusted_by_rules = trust.is_home_untrusted_by_rules(new_hour_home, no_findings)
+    is_phase_untrusted_by_rules = trust.is_phase_untrusted_by_rules(new_hour_phase, no_findings)
     # Check: 6 answers for the 6 homes and 3 for the 3 phases, every one False.
-    assert list(is_home_untrusted) == [False] * 6
-    assert list(is_phase_untrusted) == [False] * 3
+    assert list(is_home_untrusted_by_rules) == [False] * 6
+    assert list(is_phase_untrusted_by_rules) == [False] * 3
 
 
 # ----------------------------------------------------------------------------- one finding at a time
