@@ -23,25 +23,25 @@ import numpy as np  # np.nan: an empty value
 import pandas as pd  # tables
 
 
-def voltage_gap_with_neighbours(new_hour_home, is_home_untrusted):
+def voltage_gap_with_neighbours(new_hour_home, is_home_untrusted_by_rules):
     """Each home's voltage at the new hour minus the median voltage of its neighbours, in volts.
 
     new_hour_home: the home table's rows for the hour being checked (one row per home).
-    is_home_untrusted: one yes/no per home row, as is_home_untrusted_by_rules returns it.
+    is_home_untrusted_by_rules: one yes/no per home row, as trust.is_home_untrusted_by_rules returns it.
     Returns one gap per home row, in the same order. Empty when the rules untrusted the home, when it sent no
     voltage, or when none of its neighbours is usable (it's alone on its cable and phase, or they were all untrusted).
     """
     gaps = pd.Series(np.nan, index=new_hour_home.index)  # one empty gap per home, filled in below
     # One home at a time. iterrows gives each row's label (to write its gap in the right place) and the row's values.
     for row_label, home in new_hour_home.iterrows():
-        if is_home_untrusted.loc[row_label]:
+        if is_home_untrusted_by_rules.loc[row_label]:
             continue  # a reading the rules untrusted gets no gap: it stays empty
         # Its neighbours: same cable, same phase, not the home itself, and not untrusted by the rules.
         is_neighbour = (
             (new_hour_home["cable"] == home["cable"])
             & (new_hour_home["phase"] == home["phase"])
             & (new_hour_home["home_id"] != home["home_id"])
-            & ~is_home_untrusted  # "~" means "not"
+            & ~is_home_untrusted_by_rules  # "~" means "not"
         )
         # Their median voltage. median skips empty voltages, and is empty when no neighbour is left.
         neighbours_median_voltage = new_hour_home.loc[is_neighbour, "voltage_v"].median()

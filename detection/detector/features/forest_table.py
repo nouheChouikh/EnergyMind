@@ -55,12 +55,12 @@ from detector.features.usual import (  # the three usuals
 # =============================================================================
 # HOME FEATURES: one value per home row
 # =============================================================================
-def consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted):
+def consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted_by_rules):
     """Each home's kWh at the new hour divided by its usual kWh: 1.0 = as usual, 1.5 = 50% more, 0.2 = 80% less.
 
     new_hour_home: the home table's rows for the hour being checked (one row per home).
     usual_kwh: each home row's usual kWh, as consumption_usuals returns it (empty for a home with no usual yet).
-    is_home_untrusted: one yes/no per home row, as is_home_untrusted_by_rules returns it.
+    is_home_untrusted_by_rules: one yes/no per home row, as trust.is_home_untrusted_by_rules returns it.
     Returns one number per home row, in the same order. Empty when the home sent no kWh, has no usual yet, or was
     untrusted by the rules (its reading is broken, or an outage or a collection failure covers it).
     """
@@ -71,7 +71,7 @@ def consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted):
     # Row by row: this hour's kWh ÷ the usual. Empty wherever either one is empty.
     ratios = new_hour_home["kwh"] / usual_used
     # A reading the rules untrusted gets no value: it's broken, and must never look real to the forest.
-    ratios.loc[is_home_untrusted] = np.nan
+    ratios.loc[is_home_untrusted_by_rules] = np.nan
     return ratios
 
 
@@ -93,7 +93,7 @@ def voltage_gap_with_neighbours_vs_usual(new_hour_home, usual_gap):
 # =============================================================================
 # PHASE FEATURES: one value per phase row
 # =============================================================================
-def is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted):
+def is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules):
     """For each phase row: can its energy balance be trusted at the new hour? One yes/no per phase row.
 
     The balance compares what the transformer sent on the phase with what the phase's homes reported, so it only
@@ -104,21 +104,21 @@ def is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_p
          a missing reading is always caught by the missing rule, so this covers it too);
       4. none of its homes sent an estimated reading (the utility's guess, not a measurement).
     new_hour_phase / new_hour_home: the phase table's and the home table's rows for the hour being checked.
-    is_home_untrusted / is_phase_untrusted: the rules' answers, as is_home_untrusted_by_rules and
-    is_phase_untrusted_by_rules return them.
+    is_home_untrusted_by_rules / is_phase_untrusted_by_rules: the rules' answers, as trust.py's two functions of the
+    same names return them.
     """
     # 1. Energy measured. An empty reading isn't "above 0", so it counts as not measured.
     is_energy_measured = new_hour_phase["transformer_kwh"] > 0
     # 3 and 4. A home whose kWh can't go into its phase's sum: untrusted by the rules, or estimated.
     is_estimated = new_hour_home["estimated"] == 1
-    is_home_kwh_unusable = is_home_untrusted | is_estimated  # "|" means "or"
+    is_home_kwh_unusable = is_home_untrusted_by_rules | is_estimated  # "|" means "or"
     phases_with_unusable_kwh = new_hour_home.loc[is_home_kwh_unusable, "phase"]  # e.g. ["B"]
     has_unusable_kwh = new_hour_phase["phase"].isin(phases_with_unusable_kwh)  # yes for each of those phases
     # All four must hold. "~" means "not": measured, and not untrusted (2), and no unusable kWh (3 and 4).
-    return is_energy_measured & ~is_phase_untrusted & ~has_unusable_kwh
+    return is_energy_measured & ~is_phase_untrusted_by_rules & ~has_unusable_kwh
 
 
-def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_computable):
+def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_balance_computable):
     """The share of each phase's energy that neither its homes nor the expected cable losses explain, in %.
 
     (transformer energy − sum of its homes' kWh − expected losses) ÷ transformer energy × 100:
@@ -127,7 +127,7 @@ def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_computable)
       below 0: energy is appearing (the meters reported more than the transformer sent).
     new_hour_phase: the phase table's rows for the hour being checked (one row per phase).
     expected_losses_kwh: each phase row's expected cable losses, as expected_losses returns them.
-    is_computable: one yes/no per phase row, as is_balance_computable returns it.
+    is_balance_computable: one yes/no per phase row, as the function is_balance_computable returns it.
     Returns one % per phase row, in the same order; empty where the balance can't be computed.
     """
     energy = new_hour_phase["transformer_kwh"]  # what the transformer sent on each phase
@@ -136,24 +136,24 @@ def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_computable)
     # As a % of what was sent, so the normal range is the same at every load.
     percentages = unexplained_kwh / energy * 100
     # A balance built on a wrong or missing number gets no value.
-    percentages.loc[~is_computable] = np.nan
+    percentages.loc[~is_balance_computable] = np.nan
     return percentages
 
 
-def transformer_voltage_vs_usual(new_hour_phase, usual_voltage, is_phase_untrusted):
+def transformer_voltage_vs_usual(new_hour_phase, usual_voltage, is_phase_untrusted_by_rules):
     """Each phase's transformer voltage at the new hour minus its usual voltage, in volts: 0 = as usual.
 
     A sag coming from the grid reads below 0, a surge above 0.
     new_hour_phase: the phase table's rows for the hour being checked (one row per phase).
     usual_voltage: each phase row's usual voltage, as transformer_voltage_usuals returns it (empty if none yet).
-    is_phase_untrusted: one yes/no per phase row, as is_phase_untrusted_by_rules returns it.
+    is_phase_untrusted_by_rules: one yes/no per phase row, as trust.is_phase_untrusted_by_rules returns it.
     Returns one number per phase row, in the same order. Empty when the phase has no usual yet, or when the rules
     untrusted its row: its transformer reading is broken, or the phase is out (0 V would read as a huge fake sag).
     """
     # Row by row: this hour's voltage − the usual. Empty wherever the usual is empty.
     differences = new_hour_phase["transformer_voltage_v"] - usual_voltage
     # A reading the rules untrusted gets no value.
-    differences.loc[is_phase_untrusted] = np.nan
+    differences.loc[is_phase_untrusted_by_rules] = np.nan
     return differences
 
 
@@ -161,7 +161,7 @@ def transformer_voltage_vs_usual(new_hour_phase, usual_voltage, is_phase_untrust
 # THE FOREST TABLE: the five features side by side, one row per home
 # =============================================================================
 def build_forest_table(new_hour_home, new_hour_phase, home_memory, phase_memory, last_usuals,
-                       is_home_untrusted, is_phase_untrusted, losses_fit):
+                       is_home_untrusted_by_rules, is_phase_untrusted_by_rules, losses_fit):
     """The forest table for the new hour: one row per home, its name tag and its five features.
 
     new_hour_home: the home table's rows for the hour being checked, with each home's voltage gap with its
@@ -169,8 +169,8 @@ def build_forest_table(new_hour_home, new_hour_phase, home_memory, phase_memory,
     new_hour_phase: the phase table's rows for the hour being checked.
     home_memory, phase_memory: the memory's past home rows and phase rows (HOME_MEMORY_COLUMNS, PHASE_MEMORY_COLUMNS).
     last_usuals: the last usuals table (LAST_USUALS_COLUMNS), kept by the app; empty at the start.
-    is_home_untrusted, is_phase_untrusted: the rules' answers, as is_home_untrusted_by_rules and
-        is_phase_untrusted_by_rules return them.
+    is_home_untrusted_by_rules, is_phase_untrusted_by_rules: the rules' answers, as trust.py's two functions of
+        the same names return them.
     losses_fit: the losses fit (LOSSES_FIT_COLUMNS), learned once and kept in the trained model.
     Returns (forest_table, updated_last_usuals):
       forest_table: one row per home row of new_hour_home, in the same order, with the columns of
@@ -184,21 +184,24 @@ def build_forest_table(new_hour_home, new_hour_phase, home_memory, phase_memory,
     usual_voltage, last_usuals = transformer_voltage_usuals(new_hour_phase, phase_memory, last_usuals)
 
     # 2. The two phase features, one value per phase row, collected in a small table with one row per phase.
-    is_computable = is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted)
     expected_losses_kwh = expected_losses(new_hour_phase, losses_fit)
     phase_features = new_hour_phase[["phase"]].copy()  # each phase's name, with its two features added next to it
+    # The third argument is is_balance_computable's answer, passed straight in: one yes/no per phase row.
     phase_features["phase_unexplained_energy"] = phase_unexplained_energy(
-        new_hour_phase, expected_losses_kwh, is_computable
+        new_hour_phase,
+        expected_losses_kwh,
+        is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules),
     )
     phase_features["transformer_voltage_vs_usual"] = transformer_voltage_vs_usual(
-        new_hour_phase, usual_voltage, is_phase_untrusted
+        new_hour_phase, usual_voltage, is_phase_untrusted_by_rules
     )
     features_by_phase = phase_features.set_index("phase")  # findable by phase name ("A", "B" or "C")
 
     # 3. The forest table: each home's name tag, then its five features.
     forest_table = new_hour_home[["timestamp", "home_id"]].copy()  # the name tag: whose row it is
-    forest_table["consumption_vs_usual"] = consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted)
-    # No is_home_untrusted here: the gap stage already left an untrusted home's gap empty, so its feature is empty too.
+    forest_table["consumption_vs_usual"] = consumption_vs_usual(new_hour_home, usual_kwh, is_home_untrusted_by_rules)
+    # No is_home_untrusted_by_rules here: the gap stage already left an untrusted home's gap empty, so its feature
+    # comes out empty too.
     forest_table["voltage_gap_with_neighbours_vs_usual"] = voltage_gap_with_neighbours_vs_usual(
         new_hour_home, usual_gap
     )

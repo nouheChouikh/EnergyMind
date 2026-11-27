@@ -16,8 +16,10 @@ Choices:
     test_expected_losses_..., test_consumption_usuals_..., test_consumption_vs_usual_...,
     test_is_balance_computable_..., test_voltage_gap_with_neighbours_..., test_build_forest_table_...), so the test
     report reads function by function.
-  - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched, is_home_untrusted);
-    a set of names or a table of rows is named after what's in it (untrusted_homes, usable).
+  - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched,
+    is_home_untrusted_by_rules); a table of rows is named after what's in it (usable: the usable rows). An answer
+    keeps the full name of the function that gives it: where a test calls that function, it checks the answer
+    directly instead of storing it under a shorter name.
   - The losses tests build their tables from a known a and b per phase: the losses then follow a + b x E² exactly,
     so the fit must find exactly those numbers again.
   - To prove an hour is ignored, a test fills it with wild numbers: if the code used that hour, the fit would come
@@ -625,9 +627,9 @@ def balance_inputs():
         home_row_at_features_hour("H5", "C", kwh=0.5),
         home_row_at_features_hour("H6", "C", kwh=0.5),
     ])
-    is_home_untrusted = yes_no([False, False, False, False, False, False])  # one answer per home: nobody untrusted
-    is_phase_untrusted = yes_no([False, False, False])  # one answer per phase: no phase untrusted
-    return new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted
+    is_home_untrusted_by_rules = yes_no([False, False, False, False, False, False])  # one per home: nobody untrusted
+    is_phase_untrusted_by_rules = yes_no([False, False, False])  # one answer per phase: no phase untrusted
+    return new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules
 
 
 # =============================================================================
@@ -694,11 +696,11 @@ def test_consumption_vs_usual_is_empty_for_a_home_the_rules_untrusted():
 def test_is_balance_computable_when_every_number_is_measured_and_trusted():
     """On an honest hour every phase's balance can be computed: one yes per phase."""
     # Prepare: the honest hour.
-    new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted = balance_inputs()
-    # Run.
-    is_computable = is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted)
-    # Check: yes for A, B and C.
-    assert list(is_computable) == [True, True, True]
+    new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules = balance_inputs()
+    # Run and check: is_balance_computable answers yes for A, B and C.
+    assert list(is_balance_computable(
+        new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules
+    )) == [True, True, True]
 
 
 # Each case breaks one thing on phase B only. B's balance must become uncomputable, and A's and C's must stay
@@ -715,24 +717,24 @@ def test_is_balance_computable_when_every_number_is_measured_and_trusted():
 )
 def test_is_balance_computable_says_no_on_that_phase_only(what_breaks):
     """Any number in B's balance that isn't a real, trusted measurement makes B's balance (and only B's) uncomputable."""
-    new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted = balance_inputs()
+    new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules = balance_inputs()
     is_h3 = new_hour_home["home_id"] == "H3"  # H3's row (H3 is on phase B)
     is_phase_b = new_hour_phase["phase"] == "B"  # phase B's row
     # Prepare: break one thing on phase B.
     if what_breaks == "a home the rules untrusted":
-        is_home_untrusted.loc[is_h3] = True  # e.g. the stuck rule caught H3
+        is_home_untrusted_by_rules.loc[is_h3] = True  # e.g. the stuck rule caught H3
     elif what_breaks == "an estimated reading":
         new_hour_home.loc[is_h3, "estimated"] = 1  # the utility filled H3's value in itself
     elif what_breaks == "the phase row untrusted":
-        is_phase_untrusted.loc[is_phase_b] = True  # e.g. the transformer's meter on B is broken
+        is_phase_untrusted_by_rules.loc[is_phase_b] = True  # e.g. the transformer's meter on B is broken
     elif what_breaks == "no energy measured":
         new_hour_phase.loc[is_phase_b, "transformer_kwh"] = 0.0  # the transformer sent nothing on B
     elif what_breaks == "an empty energy reading":
         new_hour_phase.loc[is_phase_b, "transformer_kwh"] = np.nan  # the transformer's value for B never arrived
-    # Run.
-    is_computable = is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted, is_phase_untrusted)
-    # Check: no for B only.
-    assert list(is_computable) == [True, False, True]
+    # Run and check: is_balance_computable answers no for B only.
+    assert list(is_balance_computable(
+        new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules
+    )) == [True, False, True]
 
 
 # =============================================================================
@@ -851,8 +853,8 @@ def run_voltage_gap_with_neighbours(rows, untrusted_homes=()):
     Returns one gap per row, in the rows' order.
     """
     new_hour_home = home_table(rows)
-    is_home_untrusted = new_hour_home["home_id"].isin(untrusted_homes)  # yes for each home listed, no for the others
-    return voltage_gap_with_neighbours(new_hour_home, is_home_untrusted)
+    is_home_untrusted_by_rules = new_hour_home["home_id"].isin(untrusted_homes)  # yes for each home listed
+    return voltage_gap_with_neighbours(new_hour_home, is_home_untrusted_by_rules)
 
 
 def test_voltage_gap_with_neighbours_is_the_gap_with_their_median():
@@ -1007,8 +1009,8 @@ def forest_table_for_small_street(untrusted_homes=()):
         phase_row(FEATURES_HOUR, "B", energy=20.0, homes_kwh=19.19, voltage=231.0),
     ])
     # The rules' answers: yes for each home listed; no phase row untrusted.
-    is_home_untrusted = new_hour_home["home_id"].isin(untrusted_homes)
-    is_phase_untrusted = yes_no([False, False])
+    is_home_untrusted_by_rules = new_hour_home["home_id"].isin(untrusted_homes)
+    is_phase_untrusted_by_rules = yes_no([False, False])
     # The memory: the three trusted evenings, for every home and both phases.
     home_rows = []
     phase_rows = []
@@ -1018,7 +1020,9 @@ def forest_table_for_small_street(untrusted_homes=()):
         phase_rows.append(phase_memory_row(evening, "A", transformer_voltage))
         phase_rows.append(phase_memory_row(evening, "B", transformer_voltage))
     # The gap stage, as check_hour will run it: each home's gap with its neighbours, written into its row.
-    new_hour_home["voltage_gap_with_neighbours"] = voltage_gap_with_neighbours(new_hour_home, is_home_untrusted)
+    new_hour_home["voltage_gap_with_neighbours"] = voltage_gap_with_neighbours(
+        new_hour_home, is_home_untrusted_by_rules
+    )
     # The code being tested.
     return build_forest_table(
         new_hour_home,
@@ -1026,8 +1030,8 @@ def forest_table_for_small_street(untrusted_homes=()):
         home_memory(home_rows),
         pd.DataFrame(phase_rows, columns=PHASE_MEMORY_COLUMNS),
         last_usuals_table([]),  # nothing remembered yet
-        is_home_untrusted,
-        is_phase_untrusted,
+        is_home_untrusted_by_rules,
+        is_phase_untrusted_by_rules,
         fit_table_from_true_losses(),  # the losses fit, written out from TRUE_LOSSES
     )
 
