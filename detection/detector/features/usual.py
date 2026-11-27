@@ -1,6 +1,7 @@
-"""The usual: what a home's consumption, or a phase's transformer voltage, normally is at this hour (plan step 4).
+"""The usual: what a home's or a phase's value normally is at this hour (plan step 4).
 
-What it does: for the new hour, gives each home's usual consumption and each phase's usual transformer voltage:
+What it does: for the new hour, gives each home's usual consumption, each home's usual voltage gap with its
+neighbours, and each phase's usual transformer voltage:
   - normally, the median of the same hour, on the same type of day, over the last 28 calendar days, using the
     memory's trusted rows only, when there are at least 3 of them;
   - otherwise, the last usual remembered for that hour and type of day (the last usuals table);
@@ -18,8 +19,8 @@ Choices:
     weekend day) at that hour; before that it has none and is unchecked.
   - Built for live use: the usual comes only from the memory's past rows; the new hour is what gets compared.
   - The last usuals live in their own table because the memory only keeps about 28 days.
-  - One shared function does the work for every usual; the third one, each home's usual voltage gap with its
-    neighbours (for voltage_gap_with_neighbours_vs_usual), will use it too.
+  - One shared function does the work for all three usuals; each one only says which value it reads and under
+    which name it's remembered.
 """
 
 import pandas as pd  # tables
@@ -28,7 +29,7 @@ from detector import settings  # the 28 days, the minimum of 3 values, the trust
 
 
 # =============================================================================
-# THE TWO USUALS BUILT NOW
+# THE THREE USUALS
 # =============================================================================
 def consumption_usuals(new_hour_home, home_memory, last_usuals):
     """Each home's usual consumption (kWh) at the new hour, and the last usuals updated.
@@ -46,6 +47,25 @@ def consumption_usuals(new_hour_home, home_memory, last_usuals):
         value_column="kwh",
         last_usuals=last_usuals,
         usual_of=settings.USUAL_OF_CONSUMPTION,
+    )
+
+
+def voltage_gap_with_neighbours_usuals(new_hour_home, home_memory, last_usuals):
+    """Each home's usual voltage gap with its neighbours (V) at the new hour, and the last usuals updated.
+
+    new_hour_home: the home table's rows for the hour being checked (one row per home).
+    home_memory: the memory's past home rows, with their gap and their trust (HOME_MEMORY_COLUMNS).
+    last_usuals: the last usuals table (LAST_USUALS_COLUMNS), kept by the app; empty at the start.
+    Returns (usuals, updated_last_usuals): one usual gap per home row, in the same order (empty for a home with none
+    yet), and the last usuals with this hour's new medians written in.
+    """
+    return usuals_at_new_hour(
+        new_hour_rows=new_hour_home,
+        past_rows=home_memory,
+        home_or_phase_column="home_id",
+        value_column="voltage_gap_with_neighbours",
+        last_usuals=last_usuals,
+        usual_of=settings.USUAL_OF_VOLTAGE_GAP_WITH_NEIGHBOURS,
     )
 
 

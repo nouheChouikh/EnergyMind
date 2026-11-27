@@ -19,8 +19,9 @@ USUAL_WINDOW_DAYS = 28
 # With fewer trusted values than this, there's no median: the last usual remembered is used instead.
 USUAL_MIN_VALUES = 3
 # The usuals' names in the last usuals table (column usual_of, see data_formats.py). Each one is also the start of
-# its feature's name: consumption -> consumption_vs_usual, transformer_voltage -> transformer_voltage_vs_usual.
+# its feature's name: consumption -> consumption_vs_usual, and so on.
 USUAL_OF_CONSUMPTION = "consumption"  # a home's kWh
+USUAL_OF_VOLTAGE_GAP_WITH_NEIGHBOURS = "voltage_gap_with_neighbours"  # a home's voltage − its neighbours' median
 USUAL_OF_TRANSFORMER_VOLTAGE = "transformer_voltage"  # a phase's voltage, measured by the transformer
 
 # ----------------------------------------------------------------------------- the forest's features (plan step 4)

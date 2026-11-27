@@ -1,8 +1,8 @@
 """Tests for detector/features/: what turns the home and phase tables into the forest's features (plan steps 3, 4).
 
 What it does: checks each module of detector/features/ on small made-up tables where the right answer is known in
-advance. One section per module, in the order they're built: the losses regression, the usual, then the forest's
-features (forest_table.py: three of the five so far).
+advance. One section per module, in the order they're built: the losses regression, the usual, the forest's
+features (forest_table.py), the gap stage they read (voltage_gap_with_neighbours.py), then the forest table.
 
 Why it exists: the features feed the forest, and the forest never complains about wrong inputs: it would quietly
 learn wrong values as normal. So each piece is proven right on its own before the forest ever learns from it.
@@ -14,7 +14,8 @@ Choices:
     is built from.
   - Test names start with the function they test (test_losses_fit_..., test_usable_hours_...,
     test_expected_losses_..., test_consumption_usuals_..., test_consumption_vs_usual_...,
-    test_is_balance_computable_...), so the test report reads function by function.
+    test_is_balance_computable_..., test_voltage_gap_with_neighbours_..., test_build_forest_table_...), so the test
+    report reads function by function.
   - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched, is_home_untrusted);
     a set of names or a table of rows is named after what's in it (untrusted_homes, usable).
   - The losses tests build their tables from a known a and b per phase: the losses then follow a + b x E² exactly,
@@ -29,17 +30,24 @@ import pytest  # the test tool; @pytest.mark.parametrize runs one test once per 
 
 from detector import settings  # the names findings and trust states are written with, and the usual's minimum
 from detector.features.forest_table import (  # the code being tested
+    build_forest_table,
     consumption_vs_usual,
     is_balance_computable,
     phase_unexplained_energy,
     transformer_voltage_vs_usual,
+    voltage_gap_with_neighbours_vs_usual,
 )
 from detector.features.losses_regression import (  # the code being tested
     expected_losses,
     fit_losses_regression,
     usable_hours,
 )
-from detector.features.usual import consumption_usuals, transformer_voltage_usuals  # the code being tested
+from detector.features.usual import (  # the code being tested
+    consumption_usuals,
+    transformer_voltage_usuals,
+    voltage_gap_with_neighbours_usuals,
+)
+from detector.features.voltage_gap_with_neighbours import voltage_gap_with_neighbours  # the code being tested
 from detector.data_formats import (  # the tables' columns
     HOME_HOURS_COLUMNS,
     HOME_MEMORY_COLUMNS,
@@ -338,9 +346,10 @@ H1_EVENINGS = [
 ]
 
 
-def home_memory_row(hour, home_id, kwh, trust=settings.TRUST_TRUSTED, day_type="weekday"):
-    """One past row of the home memory. Only the hour, the home, the type of day, the kWh and the trust matter
-    for the usual; the other columns hold ordinary values."""
+def home_memory_row(hour, home_id, kwh, trust=settings.TRUST_TRUSTED, day_type="weekday",
+                    voltage_gap_with_neighbours=0.0):
+    """One past row of the home memory. Only the hour, the home, the type of day, the kWh (or, for the gap's usual,
+    the voltage gap with the neighbours) and the trust matter for the usual; the other columns hold ordinary values."""
     return {
         "timestamp": hour,
         "home_id": home_id,
@@ -352,6 +361,7 @@ def home_memory_row(hour, home_id, kwh, trust=settings.TRUST_TRUSTED, day_type="
         "voltage_v": 230.0,
         "current_a": 1.0,
         "estimated": 0,
+        "voltage_gap_with_neighbours": voltage_gap_with_neighbours,
         "trust": trust,
     }
 
@@ -528,28 +538,47 @@ def test_transformer_voltage_usuals_are_each_phases_median():
 
 
 # =============================================================================
+# USUAL (usual.py): each home's usual voltage gap with its neighbours
+# =============================================================================
+def test_voltage_gap_with_neighbours_usuals_are_the_median_of_past_gaps():
+    """The gap's usual works like the other two: the median of the home's past trusted gaps, read from the memory."""
+    # Prepare: H1's gap with its neighbours on three trusted weekday evenings: -2, -3 and -4 V (it sits far down its
+    # cable). Its kWh is 0.6 every evening: if the code read the kWh by mistake, the usual would come out 0.6.
+    rows = []
+    for day, gap in [(9, -2.0), (10, -3.0), (11, -4.0)]:
+        rows.append(home_memory_row(pd.Timestamp(2019, 1, day, 18), "H1", 0.6, voltage_gap_with_neighbours=gap))
+    # Run: H1's usual gap at Tuesday 18:00.
+    usuals, updated_last_usuals = voltage_gap_with_neighbours_usuals(
+        new_hour_home_rows(["H1"]), home_memory(rows), last_usuals_table([])
+    )
+    # Check: the median of -2, -3 and -4 is -3, and it's remembered under the gap's own name.
+    assert list(usuals) == pytest.approx([-3.0])
+    remembered = remembered_usuals(updated_last_usuals, "H1", usual_of=settings.USUAL_OF_VOLTAGE_GAP_WITH_NEIGHBOURS)
+    assert remembered == pytest.approx([-3.0])
+
+
+# =============================================================================
 # FOREST FEATURES (forest_table.py): helpers
 # =============================================================================
 # The new hour every forest feature test checks: Friday 18 January 2019 at 18:00, a weekday evening.
-# Any hour would do: the three features built so far only compare the values they're given.
 FEATURES_HOUR = pd.Timestamp(2019, 1, 18, 18)
 
 
-def home_row_at_features_hour(home_id, phase, kwh, estimated=0):
+def home_row_at_features_hour(home_id, phase, kwh, estimated=0, cable=1, voltage=230.0):
     """One home row of the new hour (FEATURES_HOUR).
 
-    Only the home, its phase, its kWh and its estimated flag (1 = the utility filled the value in itself) matter for
-    the features built so far; the other columns hold ordinary values.
+    The home, its cable and phase, its kWh, its voltage and its estimated flag (1 = the utility filled the value in
+    itself) are what the features read; the other columns hold ordinary values.
     """
     return {
         "timestamp": FEATURES_HOUR,
         "home_id": home_id,
         "phase": phase,
-        "cable": 1,
+        "cable": cable,
         "contracted_kw": 3.3,
         "day_type": "weekday",
         "kwh": kwh,
-        "voltage_v": 230.0,
+        "voltage_v": voltage,
         "current_a": 1.0,
         "estimated": estimated,
     }
@@ -791,3 +820,276 @@ def test_transformer_voltage_vs_usual_is_empty_for_a_phase_the_rules_untrusted()
     # Check: A still gets -5 V; B is empty.
     assert differences.iloc[0] == pytest.approx(-5.0)
     assert list(differences.isna()) == [False, True]
+
+
+# =============================================================================
+# GAP STAGE (voltage_gap_with_neighbours.py): each home's voltage gap with its neighbours
+# =============================================================================
+def home_voltage_row(home_id, cable, phase, voltage, estimated=0):
+    """One home row of the new hour, for the gap tests: the home, its cable and phase, its voltage and its estimated
+    flag are what the gap reads (its kWh plays no part, so it's an ordinary 0.5)."""
+    return home_row_at_features_hour(home_id, phase, kwh=0.5, estimated=estimated, cable=cable, voltage=voltage)
+
+
+def cable_1_phase_a_homes():
+    """Four neighbours: H1 to H4, all on cable 1, phase A, reading 226, 229, 228 and 230 V.
+
+    A fresh list each time, so a test can add a home to it or change one.
+    """
+    return [
+        home_voltage_row("H1", cable=1, phase="A", voltage=226.0),
+        home_voltage_row("H2", cable=1, phase="A", voltage=229.0),
+        home_voltage_row("H3", cable=1, phase="A", voltage=228.0),
+        home_voltage_row("H4", cable=1, phase="A", voltage=230.0),
+    ]
+
+
+def run_voltage_gap_with_neighbours(rows, untrusted_homes=()):
+    """Runs voltage_gap_with_neighbours on these home rows, with the rules untrusting the homes listed.
+
+    untrusted_homes: e.g. {"H5"}; left out when the rules untrusted nobody.
+    Returns one gap per row, in the rows' order.
+    """
+    new_hour_home = home_table(rows)
+    is_home_untrusted = new_hour_home["home_id"].isin(untrusted_homes)  # yes for each home listed, no for the others
+    return voltage_gap_with_neighbours(new_hour_home, is_home_untrusted)
+
+
+def test_voltage_gap_with_neighbours_is_the_gap_with_their_median():
+    """Each home's gap: its voltage minus the median voltage of the other homes on its cable and phase."""
+    # Prepare: H1 to H4 on cable 1, phase A, at 226, 229, 228 and 230 V. The rules untrusted nobody.
+    # Run.
+    gaps = run_voltage_gap_with_neighbours(cable_1_phase_a_homes())
+    # Check, home by home (each has three neighbours, and the median of three values is the middle one):
+    #   H1: 226 - median(229, 228, 230) = 226 - 229 = -3
+    #   H2: 229 - median(226, 228, 230) = 229 - 228 = +1
+    #   H3: 228 - median(226, 229, 230) = 228 - 229 = -1
+    #   H4: 230 - median(226, 229, 228) = 230 - 228 = +2
+    assert list(gaps) == pytest.approx([-3.0, 1.0, -1.0, 2.0])
+
+
+def test_voltage_gap_with_neighbours_counts_only_the_same_cable_and_phase():
+    """Homes on another cable, or on another phase of the same cable, aren't neighbours."""
+    # Prepare: H1 to H4 as above, plus H5 on cable 2 (phase A) and H6 on phase B (cable 1), both at a wild 100 V.
+    rows = cable_1_phase_a_homes()
+    rows.append(home_voltage_row("H5", cable=2, phase="A", voltage=100.0))
+    rows.append(home_voltage_row("H6", cable=1, phase="B", voltage=100.0))
+    # Run.
+    gaps = run_voltage_gap_with_neighbours(rows)
+    # Check: H1 to H4 keep the gaps above. If H5 and H6 counted, H1's neighbours would be 229, 228, 230, 100 and 100,
+    # whose median is 228, and H1's gap would be -2 instead of -3.
+    assert list(gaps.iloc[:4]) == pytest.approx([-3.0, 1.0, -1.0, 2.0])  # iloc[:4]: the first four rows
+
+
+def test_voltage_gap_with_neighbours_leaves_out_neighbours_the_rules_untrusted():
+    """A neighbour whose reading the rules untrusted is left out of the median: its voltage may be broken."""
+    # Prepare: H1 to H4 as above, plus H5 on cable 1, phase A, reading 0 V while sending kWh: the impossible rule
+    # caught it, so the rules untrusted it.
+    rows = cable_1_phase_a_homes()
+    rows.append(home_voltage_row("H5", cable=1, phase="A", voltage=0.0))
+    # Run.
+    gaps = run_voltage_gap_with_neighbours(rows, untrusted_homes={"H5"})
+    # Check: H1 to H4 keep the gaps above. If H5 counted, H1's neighbours would be 229, 228, 230 and 0, whose median
+    # is 228.5 (the middle two, averaged), and H1's gap would be -2.5.
+    assert list(gaps.iloc[:4]) == pytest.approx([-3.0, 1.0, -1.0, 2.0])
+
+
+def test_voltage_gap_with_neighbours_still_counts_an_estimated_neighbour():
+    """An estimated reading (the utility's guess) still counts as a neighbour: the rules don't untrust it, and one
+    guessed voltage barely moves the median of 7 or 8 real neighbours."""
+    # Prepare: H1 to H4 as above, but H4's 230 V is estimated.
+    rows = cable_1_phase_a_homes()
+    rows[3]["estimated"] = 1  # rows[3]: H4's row (the fourth; counting starts at 0)
+    # Run.
+    gaps = run_voltage_gap_with_neighbours(rows)
+    # Check: H1 still gets -3. If H4 were left out, H1's neighbours would be 229 and 228, whose median is 228.5, and
+    # H1's gap would be -2.5.
+    assert gaps.iloc[0] == pytest.approx(-3.0)
+
+
+def test_voltage_gap_with_neighbours_is_empty_without_a_usable_neighbour():
+    """With no usable neighbour there's nothing to compare with, so the gap is empty."""
+    # Prepare: H1 is alone on cable 2, phase A. H2 and H3 share cable 1, phase B, but the rules untrusted H3, so H2's
+    # only neighbour can't be used.
+    rows = [
+        home_voltage_row("H1", cable=2, phase="A", voltage=226.0),
+        home_voltage_row("H2", cable=1, phase="B", voltage=229.0),
+        home_voltage_row("H3", cable=1, phase="B", voltage=0.0),
+    ]
+    # Run.
+    gaps = run_voltage_gap_with_neighbours(rows, untrusted_homes={"H3"})
+    # Check: H1 and H2 are empty (and H3 too, being untrusted itself: see the next test).
+    assert list(gaps.isna()) == [True, True, True]
+
+
+def test_voltage_gap_with_neighbours_is_empty_for_a_home_the_rules_untrusted():
+    """A home whose reading the rules untrusted gets no gap: its voltage may be broken. Its neighbours still get
+    theirs, computed without it."""
+    # Prepare: H1 to H4 as above; the stuck rule caught H1, so the rules untrusted it.
+    # Run.
+    gaps = run_voltage_gap_with_neighbours(cable_1_phase_a_homes(), untrusted_homes={"H1"})
+    # Check: H1 is empty. The others' neighbours no longer include H1's 226 V:
+    #   H2: 229 - median(228, 230) = 229 - 229 = 0
+    #   H3: 228 - median(229, 230) = 228 - 229.5 = -1.5
+    #   H4: 230 - median(229, 228) = 230 - 228.5 = +1.5
+    assert list(gaps.isna()) == [True, False, False, False]
+    assert list(gaps.iloc[1:]) == pytest.approx([0.0, -1.5, 1.5])  # iloc[1:]: every row after the first
+
+
+# =============================================================================
+# FOREST FEATURES (forest_table.py): voltage_gap_with_neighbours_vs_usual
+# =============================================================================
+def test_voltage_gap_with_neighbours_vs_usual_subtracts_the_usual_gap():
+    """The feature's basic job: the home's gap now minus its usual gap, in volts."""
+    # Prepare: H1's gap is usually -3 V (it sits far down its cable) and is -3 V now. H2's gap is usually -3 V too,
+    # but its meter's voltage sensor drifted: its gap is now -8 V.
+    new_hour_home = home_table([home_row_at_features_hour("H1", "A", 0.5), home_row_at_features_hour("H2", "B", 0.5)])
+    new_hour_home["voltage_gap_with_neighbours"] = [-3.0, -8.0]  # the gaps, as the gap stage writes them
+    usual_gap = pd.Series([-3.0, -3.0])  # one per home row, as voltage_gap_with_neighbours_usuals would give them
+    # Run.
+    differences = voltage_gap_with_neighbours_vs_usual(new_hour_home, usual_gap)
+    # Check: H1 is in line as usual (0 V); H2 is 5 V out of line with its neighbours (-5 V).
+    assert list(differences) == pytest.approx([0.0, -5.0])
+
+
+def test_voltage_gap_with_neighbours_vs_usual_is_empty_without_a_gap_or_a_usual():
+    """No gap (the home, or all its neighbours, couldn't be used) or no usual gap yet: nothing to compare, so the
+    feature is empty."""
+    # Prepare: H1 has no gap; H2 has no usual gap yet; H3 has both (-8 V now, usually -3 V).
+    new_hour_home = home_table([
+        home_row_at_features_hour("H1", "A", 0.5),
+        home_row_at_features_hour("H2", "B", 0.5),
+        home_row_at_features_hour("H3", "C", 0.5),
+    ])
+    new_hour_home["voltage_gap_with_neighbours"] = [np.nan, -8.0, -8.0]
+    usual_gap = pd.Series([-3.0, np.nan, -3.0])
+    # Run.
+    differences = voltage_gap_with_neighbours_vs_usual(new_hour_home, usual_gap)
+    # Check: H1 and H2 are empty; H3 still gets -8 - (-3) = -5 V.
+    assert list(differences.isna()) == [True, True, False]
+    assert differences.iloc[2] == pytest.approx(-5.0)
+
+
+# =============================================================================
+# FOREST FEATURES (forest_table.py): build_forest_table
+# =============================================================================
+# A small street for the table tests: H1 and H2 on cable 1, phase A; H3 and H4 on cable 1, phase B. Its memory holds
+# three earlier weekday evenings at 18:00, all trusted, so every usual exists at the new hour (Friday 18:00):
+#   every home used 0.6 kWh each evening, so each home's usual consumption is 0.6 kWh;
+#   each home's gap was the same every evening, so its usual gap is that value (USUAL_GAPS below);
+#   each phase's transformer read 230, 231 and 232 V, so each phase's usual voltage is 231 V.
+PAST_EVENINGS = [
+    (pd.Timestamp(2019, 1, 15, 18), 230.0),  # Tuesday, and the transformer's voltage that evening (both phases)
+    (pd.Timestamp(2019, 1, 16, 18), 231.0),  # Wednesday
+    (pd.Timestamp(2019, 1, 17, 18), 232.0),  # Thursday
+]
+USUAL_GAPS = {"H1": -3.0, "H2": 3.0, "H3": -2.0, "H4": 2.0}
+
+
+def forest_table_for_small_street(untrusted_homes=()):
+    """Runs the gap stage, then build_forest_table, on the small street at the new hour, as check_hour will.
+
+    The new hour:
+      H1 used 0.9 kWh at 226 V, H2 0.3 kWh at 229 V (phase A); H3 0.6 kWh at 226 V, H4 1.2 kWh at 230 V (phase B);
+      phase A: the transformer sent 40 kWh at 226 V, and the homes reported 37.98 kWh;
+      phase B: the transformer sent 20 kWh at 231 V, and the homes reported 19.19 kWh.
+    untrusted_homes: the homes the rules untrusted at the new hour, e.g. {"H1"}; left out when they untrusted nobody.
+    Returns build_forest_table's two results: the forest table and the updated last usuals.
+    """
+    new_hour_home = home_table([
+        home_row_at_features_hour("H1", "A", 0.9, voltage=226.0),
+        home_row_at_features_hour("H2", "A", 0.3, voltage=229.0),
+        home_row_at_features_hour("H3", "B", 0.6, voltage=226.0),
+        home_row_at_features_hour("H4", "B", 1.2, voltage=230.0),
+    ])
+    new_hour_phase = phase_table([
+        phase_row(FEATURES_HOUR, "A", energy=40.0, homes_kwh=37.98, voltage=226.0),
+        phase_row(FEATURES_HOUR, "B", energy=20.0, homes_kwh=19.19, voltage=231.0),
+    ])
+    # The rules' answers: yes for each home listed; no phase row untrusted.
+    is_home_untrusted = new_hour_home["home_id"].isin(untrusted_homes)
+    is_phase_untrusted = yes_no([False, False])
+    # The memory: the three trusted evenings, for every home and both phases.
+    home_rows = []
+    phase_rows = []
+    for evening, transformer_voltage in PAST_EVENINGS:
+        for home_id, usual_gap in USUAL_GAPS.items():
+            home_rows.append(home_memory_row(evening, home_id, 0.6, voltage_gap_with_neighbours=usual_gap))
+        phase_rows.append(phase_memory_row(evening, "A", transformer_voltage))
+        phase_rows.append(phase_memory_row(evening, "B", transformer_voltage))
+    # The gap stage, as check_hour will run it: each home's gap with its neighbours, written into its row.
+    new_hour_home["voltage_gap_with_neighbours"] = voltage_gap_with_neighbours(new_hour_home, is_home_untrusted)
+    # The code being tested.
+    return build_forest_table(
+        new_hour_home,
+        new_hour_phase,
+        home_memory(home_rows),
+        pd.DataFrame(phase_rows, columns=PHASE_MEMORY_COLUMNS),
+        last_usuals_table([]),  # nothing remembered yet
+        is_home_untrusted,
+        is_phase_untrusted,
+        fit_table_from_true_losses(),  # the losses fit, written out from TRUE_LOSSES
+    )
+
+
+def test_build_forest_table_has_one_row_per_home_and_the_agreed_columns():
+    """One row per home, in the new hour's order, with the agreed columns: the name tag, then the five features."""
+    # Run: the small street; the rules untrusted nobody.
+    forest_table, _last_usuals = forest_table_for_small_street()
+    # Check: the columns, written out here rather than imported, so a change to the agreed format is noticed.
+    assert list(forest_table.columns) == [
+        "timestamp", "home_id",  # the name tag: whose row it is
+        "consumption_vs_usual", "voltage_gap_with_neighbours_vs_usual", "phase_unexplained_energy",
+        "transformer_voltage_vs_usual", "hour",  # the five features, in the plan's order
+    ]
+    # One row per home, each tagged with the new hour; the hour feature is 18 (18:00).
+    assert list(forest_table["home_id"]) == ["H1", "H2", "H3", "H4"]
+    assert list(forest_table["timestamp"]) == [FEATURES_HOUR] * 4
+    assert list(forest_table["hour"]) == [18, 18, 18, 18]
+
+
+def test_build_forest_table_puts_each_homes_features_on_its_row():
+    """Each home gets its own two home features, and its own phase's two phase features."""
+    # Run.
+    forest_table, _last_usuals = forest_table_for_small_street()
+    # Check, home by home (H1 and H2 on phase A; H3 and H4 on phase B):
+    #   consumption_vs_usual: 0.9 ÷ 0.6 = 1.5; 0.3 ÷ 0.6 = 0.5; 0.6 ÷ 0.6 = 1.0; 1.2 ÷ 0.6 = 2.0
+    #   gap now (each home has one neighbour): H1 226 - 229 = -3; H2 229 - 226 = +3; H3 226 - 230 = -4;
+    #     H4 230 - 226 = +4. Minus the usual gaps (-3, +3, -2, +2): 0, 0, -2, +2
+    #   phase_unexplained_energy: A's expected losses are 0.02 + 0.001 x 40² = 1.62 kWh, so
+    #     (40 - 37.98 - 1.62) ÷ 40 = 1%; B's are 0.01 + 0.002 x 20² = 0.81 kWh, so (20 - 19.19 - 0.81) ÷ 20 = 0%
+    #   transformer_voltage_vs_usual: A 226 - 231 = -5 V; B 231 - 231 = 0 V
+    assert list(forest_table["consumption_vs_usual"]) == pytest.approx([1.5, 0.5, 1.0, 2.0])
+    assert list(forest_table["voltage_gap_with_neighbours_vs_usual"]) == pytest.approx([0.0, 0.0, -2.0, 2.0])
+    assert list(forest_table["phase_unexplained_energy"]) == pytest.approx([1.0, 1.0, 0.0, 0.0])
+    assert list(forest_table["transformer_voltage_vs_usual"]) == pytest.approx([-5.0, -5.0, 0.0, 0.0])
+
+
+def test_build_forest_table_remembers_all_three_usuals():
+    """Every usual computed for the new hour is remembered in the last usuals, each under its own name."""
+    # Run.
+    _forest_table, last_usuals = forest_table_for_small_street()
+    # Check one of each: H1's consumption (0.6 kWh), H3's voltage gap (-2 V), phase A's transformer voltage (231 V).
+    remembered_consumption = remembered_usuals(last_usuals, "H1", usual_of=settings.USUAL_OF_CONSUMPTION)
+    remembered_gap = remembered_usuals(last_usuals, "H3", usual_of=settings.USUAL_OF_VOLTAGE_GAP_WITH_NEIGHBOURS)
+    remembered_voltage = remembered_usuals(last_usuals, "A", usual_of=settings.USUAL_OF_TRANSFORMER_VOLTAGE)
+    assert remembered_consumption == pytest.approx([0.6])
+    assert remembered_gap == pytest.approx([-2.0])
+    assert remembered_voltage == pytest.approx([231.0])
+
+
+def test_build_forest_table_leaves_empty_what_a_caught_home_breaks():
+    """A home the rules caught gets no home features, and empties what its reading is part of: its phase's balance
+    (for every home on that phase), and its neighbour's gap when it was that neighbour's only one. The transformer's
+    voltage and the hour don't depend on it, so they stay."""
+    # Run: the stuck rule caught H1 (on phase A), so the rules untrusted it.
+    forest_table, _last_usuals = forest_table_for_small_street(untrusted_homes={"H1"})
+    # Check, column by column (rows: H1, H2, H3, H4):
+    #   consumption: only H1 empty (H2 still gets its own 0.5)
+    #   gap: H1 empty (its reading is broken) and H2 empty (H1 was its only neighbour)
+    #   balance: H1 and H2 empty (H1's kWh is part of phase A's sum); phase B is untouched
+    #   transformer voltage: unchanged (-5, -5, 0, 0)
+    assert list(forest_table["consumption_vs_usual"].isna()) == [True, False, False, False]
+    assert list(forest_table["voltage_gap_with_neighbours_vs_usual"].isna()) == [True, True, False, False]
+    assert list(forest_table["phase_unexplained_energy"].isna()) == [True, True, False, False]
+    assert list(forest_table["transformer_voltage_vs_usual"]) == pytest.approx([-5.0, -5.0, 0.0, 0.0])

@@ -47,10 +47,25 @@ PHASE_HOURS_COLUMNS = [
     "homes_kwh", "nb_homes_reporting", "nb_homes_on_phase",
 ]
 
+# ----------------------------------------------------------------------------- the forest table, built each hour (plan step 4)
+# The five features: the values the forest learns from and scores, in the plan's order.
+FOREST_FEATURES = [
+    "consumption_vs_usual",  # the home's kWh ÷ its usual kWh
+    "voltage_gap_with_neighbours_vs_usual",  # the home's voltage gap with its neighbours − its usual gap (V)
+    "phase_unexplained_energy",  # the % of its phase's energy that nothing explains (its phase's value)
+    "transformer_voltage_vs_usual",  # its phase's transformer voltage − its usual (V) (its phase's value)
+    "hour",  # 0 to 23
+]
+# The forest table: one row per home at the new hour. timestamp and home_id are its name tag: the forest is given
+# only the five features, but a flag must say which home and which hour it's about.
+FOREST_TABLE_COLUMNS = ["timestamp", "home_id", *FOREST_FEATURES]
+
 # ----------------------------------------------------------------------------- the memory the app sends each hour (plan step 9)
 # Past home rows and past phase rows (about the last 28 days): the same columns as the two tables above, plus each
 # row's trust state, decided when its hour was checked (trusted, untrusted or unchecked: names in settings.py).
-HOME_MEMORY_COLUMNS = [*HOME_HOURS_COLUMNS, "trust"]  # the home table's columns, then "trust"
+# Home rows also keep their voltage gap with their neighbours, computed when their hour was checked: the gap's usual
+# is the median of past gaps, so each hour's gap is kept, like its trust.
+HOME_MEMORY_COLUMNS = [*HOME_HOURS_COLUMNS, "voltage_gap_with_neighbours", "trust"]
 PHASE_MEMORY_COLUMNS = [*PHASE_HOURS_COLUMNS, "trust"]  # the phase table's columns, then "trust"
 
 # Last usuals: for each home (or phase), hour of day and type of day, the last usual that could be computed. It's
