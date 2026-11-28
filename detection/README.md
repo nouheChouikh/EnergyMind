@@ -100,8 +100,8 @@ Two words, used the same way everywhere: a **step** is one of the 11 steps of `d
 |---|---|---|---|---|
 | 1 | preparation and rules | 1, 2 | `detector/preparation/`, `detector/rules/` | **built** |
 | 2 | losses, trust, usual, the five features | 3, 4 | `detector/features/`, `detector/trust.py` | **built** |
-| 3 | the forest | 5 | `detector/forest/` | |
-| 4 | learning and the first saved model | 10 (learning) | `detector/learning.py`, `detector/trained_model.py`, `evaluation/run_learning.py` | |
+| 3 | the replay of the learning year: 2018 hour by hour, giving each hour's forest table rows and trust states; then the remaining real-data checks on 2018 | 10 (learning) | `detector/learning.py` | |
+| 4 | the forest and the trained model: train the forest on the replay's rows, choose the number of trees, set T, score rows; save the trained model | 5, 10 (learning) | `detector/forest/`, `detector/trained_model.py`, `evaluation/run_learning.py` | |
 | 5 | diagnosis | 6 | `detector/diagnosis/` | |
 | 6 | incidents, confidence, cards | 7 | `detector/incidents/` | |
 | 7 | memory and the hourly check | 9 | `detector/memory.py`, `detector/hourly_check.py` | |
@@ -115,4 +115,4 @@ Part 2 is built and tested: the losses formula, the usuals (a home's first usual
 - the losses formula, expected losses = a + b × energy², fitted per phase: b is above 0 on every phase, so the cables' losses grow with the load;
 - `phase_unexplained_energy` = (energy the transformer sent − energy the homes' meters recorded − expected losses) ÷ energy sent × 100. That is the formula's error (real losses − expected losses) as a share of the energy sent. On honest hours it stays within about ±0.75% for 98 hours out of 100, and every month's middle value is near 0%.
 
-Still to check on the real 2018, once learning's hour-by-hour replay is built (part 4): the 0.05 kWh minimum under the consumption usual, the other features' normal range, and how many hours end up unchecked.
+Still to check on the real 2018, once learning's hour-by-hour replay is built (part 3): the 0.05 kWh minimum under the consumption usual, the other features' normal range, and how many hours end up unchecked.
