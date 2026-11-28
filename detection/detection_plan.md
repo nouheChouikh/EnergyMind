@@ -38,7 +38,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 
 - **What it predicts:** the normal gap on a phase, meaning transformer energy − sum of its meters (energy lost in the cables).
 - **Formula:** expected losses = *a* + *b* × (transformer phase energy)², fitted as a linear regression on the energy squared. When the transformer sent no energy, the expected losses are 0 (no energy sent, nothing lost); an empty or negative transformer reading is broken and has no expected losses.
-- **Fitted on 2018,** separately for each phase, because each phase carries different loads (2018 average losses: 0.76% on A, 0.59% on B, 0.52% on C).
+- **Fitted on 2018,** separately for each phase, because each phase carries different loads (2018 average losses, each hour's percentage averaged over the year: 0.76% on A, 0.59% on B, 0.52% on C. As the year's losses divided by the year's energy, where busy hours weigh more because they lose a bigger share: 0.90%, 0.70% and 0.66%).
 - **Only on clean hours:** the transformer measured energy, every home on the phase sent its kWh, and no rule finding touches that phase at that hour (a home's or the transformer's finding touches its phase; a street finding touches all three). One broken reading can outweigh weeks of real losses, and a least-squares line is pulled hardest by the biggest errors.
 - **Check:** *b* must come out positive, and every phase needs at least one usable hour.
 
