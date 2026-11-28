@@ -99,7 +99,7 @@ Two words, used the same way everywhere: a **step** is one of the 11 steps of `d
 | Part | What is built | Plan steps | Where | Status |
 |---|---|---|---|---|
 | 1 | preparation and rules | 1, 2 | `detector/preparation/`, `detector/rules/` | **built** |
-| 2 | losses, trust, usual, the five features | 3, 4 | `detector/features/`, `detector/trust.py` | in progress |
+| 2 | losses, trust, usual, the five features | 3, 4 | `detector/features/`, `detector/trust.py` | **built** |
 | 3 | the forest | 5 | `detector/forest/` | |
 | 4 | learning and the first saved model | 10 (learning) | `detector/learning.py`, `detector/trained_model.py`, `evaluation/run_learning.py` | |
 | 5 | diagnosis | 6 | `detector/diagnosis/` | |
@@ -110,3 +110,5 @@ Two words, used the same way everywhere: a **step** is one of the 11 steps of `d
 | 10 | the final test, at the very end | 10 (final test) | `evaluation/run_final_test.py` | |
 
 Part 1 is built and tested: the home and phase tables, the input checks, and the definition rules, combined by `rules/findings.py` into one table of findings per hour. Every rule is built for live use: it judges the new hour from the new hour plus the memory. The `evaluation/` scripts don't do anything yet; they start working with part 4.
+
+Part 2 is built and tested: the losses formula, the usuals (a home's first usual also counts its unchecked hours), each home's voltage gap with its neighbours, the five features and the forest table (`features/`), and the trust states during learning (`trust.py`). Checked on the real 2018: the losses formula (b above 0 on every phase, and it reproduces the measured losses exactly) and the energy balance (98 hours out of 100 within about ±0.75%, every month near 0%). Still to check on the real 2018, once learning's hour-by-hour replay is built (part 4): the 0.05 kWh minimum under the consumption usual, the other features' normal range, and how many hours end up unchecked.
