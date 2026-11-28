@@ -4,7 +4,7 @@ What it does: turns the utility's four inputs into
   - the home table: one row per home and hour, with the home's phase, cable, contracted power,
     the hour's type of day and the reading;
   - the phase table: one row per phase and hour, with what the transformer measured next to the sum
-    of what the phase's homes reported, and how many homes reported.
+    of what the phase's homes reported, how many homes reported, and the hour's type of day.
 
 Why it exists: every rule and column needs the same joins (which phase is this home on? is this hour a
 weekday?). Doing them once here means no later file redoes them or gets them wrong.
@@ -86,6 +86,7 @@ def build_phase_hours(home_hours, transformer_readings):
             homes_kwh=("kwh", "sum"),  # sum of the kWh that arrived (empty values are skipped; 0 if none arrived)
             nb_homes_reporting=("kwh", "count"),  # number of homes whose kWh arrived (empty values aren't counted)
             nb_homes_on_phase=("home_id", "size"),  # number of homes on the phase, reading or not
+            day_type=("day_type", "first"),  # the hour's type of day: the same for every home at that hour
         )
         .reset_index()
     )

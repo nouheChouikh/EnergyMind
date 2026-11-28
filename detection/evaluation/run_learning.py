@@ -8,5 +8,5 @@ Writes detection/outputs/saved_model/ (committed: the operator app loads the mod
 
 # To be built:
 # 1. read 2018 from dataset/data/system_inputs/ (shared/dataset_files.py)
-# 2. call the detector's learn(): losses regression, six columns, forest, T
+# 2. call the detector's learn(): losses regression, five features, forest, T
 # 3. save_model() into detection/outputs/saved_model/, with the settings and library versions used

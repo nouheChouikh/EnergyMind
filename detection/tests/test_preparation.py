@@ -121,6 +121,16 @@ def test_phase_table_adds_up_each_phase(meter_readings, street_wiring, hourly_co
     assert phase_a["transformer_voltage_v"] == transformer["voltage_v_A"]
 
 
+def test_phase_table_carries_each_hours_day_type(meter_readings, street_wiring, hourly_context, transformer_readings):
+    """Each phase row carries its hour's type of day: the transformer voltage's usual compares the same kind of day."""
+    # Run.
+    homes = build_home_hours(meter_readings, street_wiring, hourly_context)
+    phases = build_phase_hours(homes, transformer_readings)
+    # Check: on Friday all three phase rows say weekday; on Saturday all three say weekend_or_holiday.
+    assert set(phases.loc[phases["timestamp"] == FRIDAY_10, "day_type"]) == {"weekday"}
+    assert set(phases.loc[phases["timestamp"] == SATURDAY_10, "day_type"]) == {"weekend_or_holiday"}
+
+
 def test_phase_table_counts_only_the_homes_that_reported(meter_readings, street_wiring, hourly_context,
                                                          transformer_readings):
     """A missing meter lowers the count of homes that reported, so later steps know the phase's sum is incomplete."""

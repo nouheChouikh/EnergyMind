@@ -28,9 +28,10 @@ detection/
 │   ├── trained_model.py            what learning produced, plus what is stored with it; save and load
 │   ├── learning.py                 learn(): normal history → trained model
 │   ├── hourly_check.py             start_memory() and check_hour(): one hour → results
+│   ├── trust.py                    which home and phase rows may feed "usual"
 │   ├── preparation/                tables.py, input_checks.py
 │   ├── rules/                      meter_rules.py, street_rules.py, findings.py (all rules, in order)
-│   ├── columns/                    losses_regression.py, trust.py, usual.py, six_columns.py
+│   ├── features/                   losses_regression.py, usual.py, voltage_gap_with_neighbours.py, forest_table.py
 │   ├── forest/                     forest_training.py, forest_scoring.py
 │   ├── diagnosis/                  shap_reasons.py, verdict_patterns.py, home_naming.py
 │   ├── incidents/                  incident_tracking.py, confidence.py, explanation_cards.py
@@ -43,8 +44,8 @@ detection/
 │                                   threshold_baseline, report_writing
 ├── outputs/                        generated: saved_model/, practice_results/, final_test_results/
 └── tests/                          conftest.py (shared test data), test_boundaries.py, and one test file
-                                    per part: preparation, rules, columns, forest, diagnosis, incidents,
-                                    feedback, hourly_check, answer_matching
+                                    per part: preparation, rules, features, trust, forest, diagnosis,
+                                    incidents, feedback, hourly_check, answer_matching
 ```
 
 ## Where each plan step lives
@@ -53,8 +54,8 @@ detection/
 |---|---|
 | 1. Prepare the data | `detector/preparation/` |
 | 2. Rules for definitions | `detector/rules/` |
-| 3. The losses regression | `detector/columns/losses_regression.py` |
-| 4. The six columns | `detector/columns/` |
+| 3. The losses regression | `detector/features/losses_regression.py` |
+| 4. The five features | `detector/features/`; the trust rule in `detector/trust.py` |
 | 5. Train the Isolation Forest | `detector/forest/` |
 | 6. Explain and diagnose each flag | `detector/diagnosis/` |
 | 7. Incidents, scores, explanation card | `detector/incidents/` |
@@ -98,7 +99,7 @@ Two words, used the same way everywhere: a **step** is one of the 11 steps of `d
 | Part | What is built | Plan steps | Where | Status |
 |---|---|---|---|---|
 | 1 | preparation and rules | 1, 2 | `detector/preparation/`, `detector/rules/` | **built** |
-| 2 | losses, trust, usual, the six columns | 3, 4 | `detector/columns/` | next |
+| 2 | losses, trust, usual, the five features | 3, 4 | `detector/features/`, `detector/trust.py` | **built** |
 | 3 | the forest | 5 | `detector/forest/` | |
 | 4 | learning and the first saved model | 10 (learning) | `detector/learning.py`, `detector/trained_model.py`, `evaluation/run_learning.py` | |
 | 5 | diagnosis | 6 | `detector/diagnosis/` | |
@@ -109,3 +110,9 @@ Two words, used the same way everywhere: a **step** is one of the 11 steps of `d
 | 10 | the final test, at the very end | 10 (final test) | `evaluation/run_final_test.py` | |
 
 Part 1 is built and tested: the home and phase tables, the input checks, and the definition rules, combined by `rules/findings.py` into one table of findings per hour. Every rule is built for live use: it judges the new hour from the new hour plus the memory. The `evaluation/` scripts don't do anything yet; they start working with part 4.
+
+Part 2 is built and tested: the losses formula, the usuals (a home's first usual also counts its unchecked hours), each home's voltage gap with its neighbours, the five features and the forest table (`features/`), and the trust states during learning (`trust.py`). Checked on the real 2018:
+- the losses formula, expected losses = a + b × energy², fitted per phase: b is above 0 on every phase, so the cables' losses grow with the load;
+- `phase_unexplained_energy` = (energy the transformer sent − energy the homes' meters recorded − expected losses) ÷ energy sent × 100. That is the formula's error (real losses − expected losses) as a share of the energy sent. On honest hours it stays within about ±0.75% for 98 hours out of 100, and every month's middle value is near 0%.
+
+Still to check on the real 2018, once learning's hour-by-hour replay is built (part 4): the 0.05 kWh minimum under the consumption usual, the other features' normal range, and how many hours end up unchecked.
