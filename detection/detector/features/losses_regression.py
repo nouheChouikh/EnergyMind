@@ -5,9 +5,9 @@ What it does:
     E is the transformer's energy on the phase; the losses are E minus the sum of the phase's meters.
   - expected_losses: live, every hour, gives each phase's expected losses at the new hour.
 
-Why it exists: the energy balance (phase_unexplained_energy, plan step 4) must know how much energy the cables
-normally lose. Losses are the only part of the balance nobody measures, and they grow with the square of the load,
-so a fixed allowance can't fit both quiet and busy hours.
+Why it exists: phase_unexplained_energy (plan step 4) must know how much energy the cables normally lose. In it
+(energy sent − energy the homes recorded − expected losses), losses are the only part nobody measures, and they
+grow with the square of the load, so a fixed allowance can't fit both quiet and busy hours.
 
 Choices:
   - The fit learns only from clean hours: the transformer measured energy, every home on the phase sent its kWh,

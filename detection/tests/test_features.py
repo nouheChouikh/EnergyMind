@@ -14,8 +14,8 @@ Choices:
     is built from.
   - Test names start with the function they test (test_losses_fit_..., test_usable_hours_...,
     test_expected_losses_..., test_consumption_usuals_..., test_consumption_vs_usual_...,
-    test_is_balance_computable_..., test_voltage_gap_with_neighbours_..., test_build_forest_table_...), so the test
-    report reads function by function.
+    test_is_unexplained_energy_computable_..., test_voltage_gap_with_neighbours_..., test_build_forest_table_...),
+    so the test report reads function by function.
   - Names say what a value holds: a yes/no for each row starts with is_ or has_ (is_touched,
     is_home_untrusted_by_rules); a table of rows is named after what's in it (usable: the usable rows). An answer
     keeps the full name of the function that gives it: where a test calls that function, it checks the answer
@@ -34,7 +34,7 @@ from detector import settings  # the names findings and trust states are written
 from detector.features.forest_table import (  # the code being tested
     build_forest_table,
     consumption_vs_usual,
-    is_balance_computable,
+    is_unexplained_energy_computable,
     phase_unexplained_energy,
     transformer_voltage_vs_usual,
     voltage_gap_with_neighbours_vs_usual,
@@ -633,18 +633,18 @@ def yes_no(answers):
     """One yes/no per row, in the rows' order: yes_no([False, True]) is two rows, and only the second says yes.
 
     Stands in for answers another function would give: the rules' (is_home_untrusted_by_rules,
-    is_phase_untrusted_by_rules) or is_balance_computable's.
+    is_phase_untrusted_by_rules) or is_unexplained_energy_computable's.
     """
     return pd.Series(answers)
 
 
-def balance_inputs():
-    """is_balance_computable's four inputs for an honest hour, where every phase's balance can be trusted.
+def unexplained_energy_inputs():
+    """is_unexplained_energy_computable's four inputs for an honest hour, where it says yes on every phase.
 
     Phases A, B and C, each with two homes that sent measured readings (A: H1 and H2; B: H3 and H4; C: H5 and H6),
     and the transformer measured 40 kWh on each phase. The rules untrusted nobody.
-    Only two homes per phase are listed: is_balance_computable looks at each home's trust and estimated flag, not at
-    the phase's sums, so the sums (39 kWh reported) don't need to add up from these two homes.
+    Only two homes per phase are listed: is_unexplained_energy_computable looks at each home's trust and estimated
+    flag, not at the phase's sums, so the sums (39 kWh reported) don't need to add up from these two homes.
     Returns the phase rows, the home rows, and the rules' two answers (one per home row, one per phase row).
     """
     new_hour_phase = phase_table([
@@ -724,20 +724,20 @@ def test_consumption_vs_usual_is_empty_for_a_home_the_rules_untrusted():
 
 
 # =============================================================================
-# FOREST FEATURES (forest_table.py): is_balance_computable
+# FOREST FEATURES (forest_table.py): is_unexplained_energy_computable
 # =============================================================================
-def test_is_balance_computable_when_every_number_is_measured_and_trusted():
-    """On an honest hour every phase's balance can be computed: one yes per phase."""
+def test_is_unexplained_energy_computable_when_every_number_is_measured_and_trusted():
+    """On an honest hour every phase's unexplained energy can be computed: one yes per phase."""
     # Prepare: the honest hour.
-    new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules = balance_inputs()
-    # Run and check: is_balance_computable answers yes for A, B and C.
-    assert list(is_balance_computable(
+    new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules = unexplained_energy_inputs()
+    # Run and check: is_unexplained_energy_computable answers yes for A, B and C.
+    assert list(is_unexplained_energy_computable(
         new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules
     )) == [True, True, True]
 
 
-# Each case breaks one thing on phase B only. B's balance must become uncomputable, and A's and C's must stay
-# computable: a problem on one phase never blinds the other two.
+# Each case breaks one thing on phase B only. B's unexplained energy must become uncomputable, and A's and C's must
+# stay computable: a problem on one phase never blinds the other two.
 @pytest.mark.parametrize(
     "what_breaks",
     [
@@ -748,9 +748,9 @@ def test_is_balance_computable_when_every_number_is_measured_and_trusted():
         "an empty energy reading",
     ],
 )
-def test_is_balance_computable_says_no_on_that_phase_only(what_breaks):
-    """Any number in B's balance that isn't a real, trusted measurement makes B's balance (and only B's) uncomputable."""
-    new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules = balance_inputs()
+def test_is_unexplained_energy_computable_says_no_on_that_phase_only(what_breaks):
+    """Any number in B's unexplained energy that isn't a real, trusted measurement makes it uncomputable (on B only)."""
+    new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules = unexplained_energy_inputs()
     is_h3 = new_hour_home["home_id"] == "H3"  # H3's row (H3 is on phase B)
     is_phase_b = new_hour_phase["phase"] == "B"  # phase B's row
     # Prepare: break one thing on phase B.
@@ -764,8 +764,8 @@ def test_is_balance_computable_says_no_on_that_phase_only(what_breaks):
         new_hour_phase.loc[is_phase_b, "transformer_kwh"] = 0.0  # the transformer sent nothing on B
     elif what_breaks == "an empty energy reading":
         new_hour_phase.loc[is_phase_b, "transformer_kwh"] = np.nan  # the transformer's value for B never arrived
-    # Run and check: is_balance_computable answers no for B only.
-    assert list(is_balance_computable(
+    # Run and check: is_unexplained_energy_computable answers no for B only.
+    assert list(is_unexplained_energy_computable(
         new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules
     )) == [True, False, True]
 
@@ -775,7 +775,7 @@ def test_is_balance_computable_says_no_on_that_phase_only(what_breaks):
 # =============================================================================
 def test_phase_unexplained_energy_follows_the_formula():
     """(transformer energy − its homes' kWh − expected losses) ÷ transformer energy × 100, phase by phase."""
-    # Prepare: three phases whose balances can all be computed.
+    # Prepare: three phases whose unexplained energy can all be computed.
     #   A: 40 kWh sent, 39 reported, 0.6 expected losses: 0.4 kWh unexplained, 1% of 40 (energy missing)
     #   B: 20 kWh sent, 20.1 reported, 0.2 expected losses: -0.3 kWh unexplained, -1.5% of 20 (energy appearing)
     #   C: 10 kWh sent, 9.95 reported, 0.05 expected losses: 0 kWh unexplained, 0% (everything adds up)
@@ -791,11 +791,12 @@ def test_phase_unexplained_energy_follows_the_formula():
     assert list(percentages) == pytest.approx([1.0, -1.5, 0.0])
 
 
-def test_phase_unexplained_energy_is_empty_where_the_balance_cant_be_computed():
-    """Where is_balance_computable said no, the feature is empty: a balance built on a wrong or missing number must
-    never look real to the forest."""
+def test_phase_unexplained_energy_is_empty_where_it_cant_be_computed():
+    """Where is_unexplained_energy_computable said no, the feature is empty: unexplained energy built on a wrong or
+    missing number must never look real to the forest."""
     # Prepare: A is honest (1%, as above); the transformer measured nothing on B (0 kWh, so its expected losses are 0),
-    # and is_balance_computable said no for it. With 0 kWh, the % would divide by zero: it must stay silent and empty.
+    # and is_unexplained_energy_computable said no for it. With 0 kWh, the % would divide by zero: it must stay
+    # silent and empty.
     new_hour_phase = phase_table([
         phase_row(FEATURES_HOUR, "A", energy=40.0, homes_kwh=39.0),
         phase_row(FEATURES_HOUR, "B", energy=0.0, homes_kwh=0.0),
@@ -1116,15 +1117,15 @@ def test_build_forest_table_remembers_all_three_usuals():
 
 
 def test_build_forest_table_leaves_empty_what_a_caught_home_breaks():
-    """A home the rules caught gets no home features, and empties what its reading is part of: its phase's balance
-    (for every home on that phase), and its neighbour's gap when it was that neighbour's only one. The transformer's
-    voltage and the hour don't depend on it, so they stay."""
+    """A home the rules caught gets no home features, and empties what its reading is part of: its phase's
+    unexplained energy (for every home on that phase), and its neighbour's gap when it was that neighbour's only one.
+    The transformer's voltage and the hour don't depend on it, so they stay."""
     # Run: the stuck rule caught H1 (on phase A), so the rules untrusted it.
     forest_table, _last_usuals = forest_table_for_small_street(untrusted_homes={"H1"})
     # Check, column by column (rows: H1, H2, H3, H4):
     #   consumption: only H1 empty (H2 still gets its own 0.5)
     #   gap: H1 empty (its reading is broken) and H2 empty (H1 was its only neighbour)
-    #   balance: H1 and H2 empty (H1's kWh is part of phase A's sum); phase B is untouched
+    #   unexplained energy: H1 and H2 empty (H1's kWh is part of phase A's sum); phase B is untouched
     #   transformer voltage: unchanged (-5, -5, 0, 0)
     assert list(forest_table["consumption_vs_usual"].isna()) == [True, False, False, False]
     assert list(forest_table["voltage_gap_with_neighbours_vs_usual"].isna()) == [True, True, False, False]
