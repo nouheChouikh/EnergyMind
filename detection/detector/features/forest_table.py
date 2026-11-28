@@ -7,7 +7,7 @@ What it does, for the new hour:
         line, as usual). The gap itself is read from the home's row, where the gap stage wrote it
         (voltage_gap_with_neighbours.py);
       phase_unexplained_energy: the % of its phase's energy that neither the phase's homes nor the expected cable
-        losses explain (0% = everything adds up), only where is_balance_computable says the balance can be trusted;
+        losses explain (0% = everything adds up), only where is_unexplained_energy_computable says it can be trusted;
       transformer_voltage_vs_usual: its phase's transformer voltage − the usual voltage (0 V = as usual);
       hour: 0 to 23 (night and day differ).
   - build_forest_table: computes the three usuals and the five features, and puts them side by side in the forest
@@ -28,11 +28,11 @@ Choices:
   - Three forms, each suited to its value:
       consumption is a ratio: homes differ in size (0.3 kWh more is a lot for a small home, little for a big one);
       voltage is a difference: every home sits near 230 V, so volts already mean the same everywhere;
-      the balance is a % of the phase's energy: the transformer meter's error is a % of what it measures, so the
-      normal range stays the same at every load.
-  - A home the rules caught empties its whole phase's balance: its kWh is part of the phase's sum, so the sum is
-    wrong. An estimated reading does the same: it's the utility's guess, and a single hour can't average a guess
-    out (the losses fit, over a whole year, can).
+      the unexplained energy is a % of the phase's energy: the transformer meter's error is a % of what it
+      measures, so the normal range stays the same at every load.
+  - A home the rules caught empties its whole phase's unexplained energy: its kWh is part of the phase's sum, so the
+    sum is wrong. An estimated reading does the same: it's the utility's guess, and a single hour can't average a
+    guess out (the losses fit, over a whole year, can).
   - The gap is compared with the home's usual gap, never with 0. Comparing with the neighbours cancels what the
     whole cable shares (a sag from the grid lowers every home together); comparing with the usual gap cancels the
     home's place on the cable (a home far from the transformer always reads a few volts lower).
@@ -93,12 +93,14 @@ def voltage_gap_with_neighbours_vs_usual(new_hour_home, usual_gap):
 # =============================================================================
 # PHASE FEATURES: one value per phase row
 # =============================================================================
-def is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules):
-    """For each phase row: can its energy balance be trusted at the new hour? One yes/no per phase row.
+def is_unexplained_energy_computable(new_hour_phase, new_hour_home, is_home_untrusted_by_rules,
+                                     is_phase_untrusted_by_rules):
+    """For each phase row: can its unexplained energy be computed at the new hour? One yes/no per phase row.
 
-    The balance compares what the transformer sent on the phase with what the phase's homes reported, so it only
-    means something if every number in it is a real, trusted measurement. A phase says yes only when:
-      1. the transformer measured energy on it (above 0: the balance is a % of that energy, so it divides by it);
+    The unexplained energy compares what the transformer sent on the phase with what the phase's homes reported, so
+    it only means something if every number in it is a real, trusted measurement. A phase says yes only when:
+      1. the transformer measured energy on it (above 0: the unexplained energy is a % of that energy, so it divides
+         by it);
       2. the rules didn't untrust its row (its transformer reading isn't broken, and it isn't out);
       3. the rules untrusted none of its homes (a caught reading is part of the phase's sum, so the sum is wrong;
          a missing reading is always caught by the missing rule, so this covers it too);
@@ -118,7 +120,7 @@ def is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted_by_ru
     return is_energy_measured & ~is_phase_untrusted_by_rules & ~has_unusable_kwh
 
 
-def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_balance_computable):
+def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_unexplained_energy_computable):
     """The share of each phase's energy that neither its homes nor the expected cable losses explain, in %.
 
     (transformer energy − sum of its homes' kWh − expected losses) ÷ transformer energy × 100:
@@ -127,16 +129,16 @@ def phase_unexplained_energy(new_hour_phase, expected_losses_kwh, is_balance_com
       below 0: energy is appearing (the meters reported more than the transformer sent).
     new_hour_phase: the phase table's rows for the hour being checked (one row per phase).
     expected_losses_kwh: each phase row's expected cable losses, as expected_losses returns them.
-    is_balance_computable: one yes/no per phase row, as the function is_balance_computable returns it.
-    Returns one % per phase row, in the same order; empty where the balance can't be computed.
+    is_unexplained_energy_computable: one yes/no per phase row, as the function of the same name returns it.
+    Returns one % per phase row, in the same order; empty where it can't be computed.
     """
     energy = new_hour_phase["transformer_kwh"]  # what the transformer sent on each phase
     # What's left once the homes' meters and the cables' expected losses are taken away.
     unexplained_kwh = energy - new_hour_phase["homes_kwh"] - expected_losses_kwh
     # As a % of what was sent, so the normal range is the same at every load.
     percentages = unexplained_kwh / energy * 100
-    # A balance built on a wrong or missing number gets no value.
-    percentages.loc[~is_balance_computable] = np.nan
+    # Unexplained energy built on a wrong or missing number gets no value.
+    percentages.loc[~is_unexplained_energy_computable] = np.nan
     return percentages
 
 
@@ -186,11 +188,13 @@ def build_forest_table(new_hour_home, new_hour_phase, home_memory, phase_memory,
     # 2. The two phase features, one value per phase row, collected in a small table with one row per phase.
     expected_losses_kwh = expected_losses(new_hour_phase, losses_fit)
     phase_features = new_hour_phase[["phase"]].copy()  # each phase's name, with its two features added next to it
-    # The third argument is is_balance_computable's answer, passed straight in: one yes/no per phase row.
+    # The third argument is is_unexplained_energy_computable's answer, passed straight in: one yes/no per phase row.
     phase_features["phase_unexplained_energy"] = phase_unexplained_energy(
         new_hour_phase,
         expected_losses_kwh,
-        is_balance_computable(new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules),
+        is_unexplained_energy_computable(
+            new_hour_phase, new_hour_home, is_home_untrusted_by_rules, is_phase_untrusted_by_rules
+        ),
     )
     phase_features["transformer_voltage_vs_usual"] = transformer_voltage_vs_usual(
         new_hour_phase, usual_voltage, is_phase_untrusted_by_rules

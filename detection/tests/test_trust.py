@@ -241,7 +241,7 @@ def test_is_home_row_scorable_leaves_out_caught_and_estimated_readings():
     [
         "consumption_vs_usual",  # e.g. the home has no usual yet
         "voltage_gap_with_neighbours_vs_usual",  # e.g. none of its neighbours is usable
-        "phase_unexplained_energy",  # e.g. a meter on its phase was caught, so the balance can't be computed
+        "phase_unexplained_energy",  # e.g. a meter on its phase was caught, so it can't be computed
         "transformer_voltage_vs_usual",  # e.g. the transformer's reading on its phase is broken
     ],
 )
@@ -270,7 +270,7 @@ def test_home_trust_states_during_learning_follow_the_four_cases():
     #   H1: the rules untrusted it, and its reading is estimated too (case 1 comes first)
     #   H2: estimated, with an empty feature (an estimated reading is trusted all the same)
     #   H3: measured, every feature filled in
-    #   H4: measured, but its balance is empty (e.g. a meter on its phase was caught)
+    #   H4: measured, but its phase_unexplained_energy is empty (e.g. a meter on its phase was caught)
     #   H5: measured, but it has no usual yet, so consumption_vs_usual is empty
     new_hour_home = pd.DataFrame(
         [
@@ -303,12 +303,12 @@ def test_home_trust_states_during_learning_follow_the_four_cases():
 
 def test_phase_trust_states_during_learning_follow_the_three_cases():
     """Each phase row gets the trust state of the first case that holds: 1. the rules untrusted it: untrusted;
-    2. its transformer voltage feature is empty (no usual voltage yet): unchecked; otherwise: trusted. Its balance
-    plays no part: a phase row only feeds the transformer voltage usual."""
+    2. its transformer voltage feature is empty (no usual voltage yet): unchecked; otherwise: trusted. Its
+    unexplained energy plays no part: a phase row only feeds the transformer voltage usual."""
     # Prepare: three phases with one home each (each home row carries its phase's two phase features).
     #   A: the rules untrusted it (e.g. its transformer meter is broken), so both its phase features are empty
     #   B: it has no usual voltage yet (the first days), so its transformer voltage feature is empty
-    #   C: its balance is empty (a meter on C was caught), but its transformer voltage feature is filled in
+    #   C: its unexplained energy is empty (a meter on C was caught), but its transformer voltage feature is filled in
     new_hour_phase = pd.DataFrame([phase_row("A"), phase_row("B"), phase_row("C")], columns=PHASE_HOURS_COLUMNS)
     new_hour_home = pd.DataFrame(
         [home_row("H1", "A"), home_row("H2", "B"), home_row("H3", "C")], columns=HOME_HOURS_COLUMNS
@@ -326,5 +326,5 @@ def test_phase_trust_states_during_learning_follow_the_three_cases():
     phase_trust_states_during_learning = trust.phase_trust_states_during_learning(
         new_hour_phase, new_hour_home, is_phase_untrusted_by_rules, forest_table
     )
-    # Check: A untrusted (case 1), B unchecked (case 2), C trusted (its empty balance plays no part).
+    # Check: A untrusted (case 1), B unchecked (case 2), C trusted (its empty unexplained energy plays no part).
     assert list(phase_trust_states_during_learning) == ["untrusted", "unchecked", "trusted"]

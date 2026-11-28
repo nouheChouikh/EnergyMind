@@ -27,7 +27,8 @@ Choices:
     rules untrusted is untrusted; an estimated reading is trusted (the utility's own value, kept for history, never
     scored); a row with an empty feature is unchecked (nobody could check it).
   - A phase row only feeds the transformer voltage usual, so only its own reading decides its trust state. Its
-    balance plays no part: a caught home meter empties the balance, but says nothing about the transformer's voltage.
+    unexplained energy plays no part: a caught home meter empties it, but says nothing about the transformer's
+    voltage.
   - It sits at the top of detector/, not in features/: it isn't something a feature is built from. It decides what
     the memory keeps.
   - Built for live use: everything here judges the new hour only. Operator decisions live in

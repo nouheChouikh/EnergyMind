@@ -42,7 +42,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 - **Only on clean hours:** the transformer measured energy, every home on the phase sent its kWh, and no rule finding touches that phase at that hour (a home's or the transformer's finding touches its phase; a street finding touches all three). One broken reading can outweigh weeks of real losses, and a least-squares line is pulled hardest by the biggest errors.
 - **Check:** *b* must come out positive, and every phase needs at least one usable hour.
 
-*Why:* losses are the only part of the energy balance that isn't measured. They grow with the square of the load, so a fixed allowance can't fit both quiet and busy hours.
+*Why:* in the unexplained energy (energy sent − energy the homes recorded − expected losses), losses are the only part that isn't measured. They grow with the square of the load, so a fixed allowance can't fit both quiet and busy hours.
 
 ## Step 4. The five features
 
@@ -62,7 +62,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 | `transformer_voltage_vs_usual` | transformer phase voltage − its usual for this hour | Is the voltage arriving at the transformer off (a sag or surge from the grid)? |
 | `hour` | 0–23 | What time is it? |
 
-**These are general senses, not problem detectors.** Each one measures a basic relationship of a healthy street: a home vs its habits, a meter vs its neighbours, the energy balance, the grid. Many problems disturb each one, and the forest decides what's abnormal.
+**These are general senses, not problem detectors.** Each one measures a basic relationship of a healthy street: a home vs its habits, a meter vs its neighbours, a phase's unexplained energy, the grid. Many problems disturb each one, and the forest decides what's abnormal.
 
 **Why the comparisons work:**
 - **Comparing with neighbours** cancels what the whole cable experiences: the voltage arriving at the transformer, and the load everyone shares.
@@ -81,7 +81,7 @@ Every rule judges the **new hour** only, from the new hour's readings plus the m
 - **When one of a home's features can't be computed, its hour is unchecked:**
   - the home has no usual yet;
   - none of its neighbours is usable;
-  - its phase's balance can't be computed: a meter on that phase was caught by a rule (missing, impossible or stuck), so the sum of the phase's meters is wrong; a meter on that phase sent an estimated reading (the utility's guess, not a measurement); or the transformer measured no energy on that phase (the balance is a percentage of it);
+  - its phase's unexplained energy can't be computed: a meter on that phase was caught by a rule (missing, impossible or stuck), so the sum of the phase's meters is wrong; a meter on that phase sent an estimated reading (the utility's guess, not a measurement); or the transformer measured no energy on that phase (the unexplained energy is a percentage of it);
   - the transformer's reading on its own phase is broken.
 
   The other phases are still scored.
@@ -224,10 +224,10 @@ Two rules for this table:
 - Small, slow problems will be caught late or missed until improvement 1.
 - Subtle thefts are often reported as a list of candidates, not one named home.
 - A theft hidden behind a brand-new appliance can't be tied to a home: it's reported as energy missing on the phase.
-- A stuck meter is recognised at its 4th identical reading, so the alarm comes 2 hours after it froze (honest meters repeat a reading up to 3 times in a row). Those 2 earlier hours stay as they were judged, and during them the frozen reading still goes into its phase's balance, so the phase can look like it's missing or gaining energy.
-- While a meter's reading is caught by a rule (missing, impossible or stuck) or is estimated, its phase's balance can't be computed, so that phase's homes aren't scored by the forest; the rules still judge them.
+- A stuck meter is recognised at its 4th identical reading, so the alarm comes 2 hours after it froze (honest meters repeat a reading up to 3 times in a row). Those 2 earlier hours stay as they were judged, and during them the frozen reading still goes into its phase's unexplained energy, so the phase can look like it's missing or gaining energy.
+- While a meter's reading is caught by a rule (missing, impossible or stuck) or is estimated, its phase's unexplained energy can't be computed, so that phase's homes aren't scored by the forest; the rules still judge them.
 - One home's supply cut, recorded as 0 V while its phase has power, isn't named by a rule: the forest flags it (its voltage is far below its neighbours') and an operator decides (generally, a supply cut wouldn't send anything anyway so it would count as missing)
-- A problem the system misses feeds the usual. The median barely moves until the problem fills half of its values (about 2 weeks); after that, it looks normal to the features that use a usual. Its hours leave the usual within 4 weeks after it ends. The energy balance uses no usual, so a missed theft still shows as energy missing on the phase.
+- A problem the system misses feeds the usual. The median barely moves until the problem fills half of its values (about 2 weeks); after that, it looks normal to the features that use a usual. Its hours leave the usual within 4 weeks after it ends. The unexplained energy uses no usual, so a missed theft still shows as energy missing on the phase.
 - Learning has no forest yet, so it treats the history as mostly normal: a long problem hidden in the history is learned as normal. Likewise, a home's very first usual comes from hours nobody checked: a problem present from its first days becomes its usual.
-- A home alone on its cable and phase has no neighbours, so its voltage gap can't be computed: its gap feature is always empty, and the forest never scores it. The rules still judge it, and energy going missing at its home still shows in its phase's balance.
+- A home alone on its cable and phase has no neighbours, so its voltage gap can't be computed: its gap feature is always empty, and the forest never scores it. The rules still judge it, and energy going missing at its home still shows in its phase's unexplained energy.
 - The physics in the dataset is simulated, so the results are an upper bound.
